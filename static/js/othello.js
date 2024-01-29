@@ -7,6 +7,9 @@ import {noFillFn, neverFillFn, Board} from './board.js';
 import {Point, Edge, Polygon, randomEdgePoint} from './primitives.js';
 
 let board = null;
+let me = null;
+let boardName = null;
+let key = null;
    
 function initBoard(board, boardPlan) {
     const fn = (typ, n) => {
@@ -43,7 +46,7 @@ function getNumPieces(board) {
 }
 
 function getTurn(board) {
-    numPieces = getNumPieces(board);
+    const numPieces = getNumPieces(board);
     if (numPieces < 4) {
         return -1;
     }
@@ -62,6 +65,15 @@ function transformPoints(board) {
         }
     }
     return pts;
+}
+
+// For whatever reason, board.neighbors is an object and not an Array
+function transformNeighbors(board) {
+    const ns = [];
+    for (let i=0; i<board.points.length; i++) {
+        ns[i] = board.neighbors[i];
+    }
+    return ns;
 }
 
 function getShortestPaths(board, p1, p2) {
@@ -100,7 +112,6 @@ function getShortestPaths(board, p1, p2) {
             }
         }
         if (finished) {
-            console.log("here");
             const paths = [];
             next.forEach(node => {
                 if (node.cur == p2) {
@@ -119,53 +130,59 @@ function getShortestPaths(board, p1, p2) {
     return [];
 }
 
-// Turn determines player
-// Candidates are empty spaces next to other player's pieces
-/*func (board *Board) GetPossibleMoves() [][2]int {
-    me := board.Turn % 2
-    other := 1-me 
-    from := []int{}
-    to := []int{}
-    for p,player := range board.Points {
-        if player == me {
-            from = append(from, p)
-        } else if player == -1 {
-            for _,np := range board.Neighbors[p] {
-                if board.Points[np] == other {
-                    to = append(to, p)
+function getPossibleMoves(board) {
+    const me = getTurn(board) % 2;
+    const other = 1-me;
+    const from = [];  
+    const to = [];
+    const pts = transformPoints(board);
+    pts.forEach((player, i) => {
+        if (player == me) {
+            from.push(i);
+        } else if (player == -1) {
+            for (let j=0; j<board.neighbors[i].length; j++) {
+                const np = board.neighbors[i][j];
+                if (pts[np] == other) {
+                    to.push(i);
                     break
                 }
             }
         }
-    }
-    moves := [][2]int{}
-    for _,toP := range to {
-        for _,fromP := range from {
-            paths := board.GetShortestPaths(fromP, toP)
-            // Only those paths with all the other player's pieces are allowed
-            // Other than starting and ending points
-            // Also they must have length > 3
-            valid := false
-            nextpath:
-            for _,path := range paths {
-                if len(path) < 3 {
-                    continue
+    });
+    const moves = [];
+    to.forEach(toP => {
+        from.forEach(fromP => {
+            const paths = getShortestPaths(board, fromP, toP);
+            let valid = false;
+            nextpath: 
+            for (let i=0; i<paths.length; i++) {
+                if (paths[i].length < 3) {
+                    continue;
                 }
-                for i := 1; i < len(path) - 1; i++ {
-                    if board.Points[path[i]] != other {
-                        continue nextpath
+                for (let j=1; j<paths[i].length - 1; j++) {
+                    if (pts[paths[i][j]] != other) {
+                        continue nextpath;
                     }
                 }
-                valid = true
-                break
+                valid = true;
+                break;
             }
-            if valid {
-                moves = append(moves, [2]int{fromP, toP})
+            if (valid) {
+                moves.push([fromP, toP]);
             }
+        });
+    });
+    return moves;
+}
+
+function getMove(pts1, pts2) {
+    for (let i=0; i<pts1.length; i++) {
+        if (pts1[i] == -1 && pts2[i] != -1) {
+            return i;
         }
     }
-    return moves
-}*/
+    return -1;
+}
 
 function gameOver(board) {
 
@@ -198,12 +215,91 @@ window.addEventListener('load', () => {
                 break;
             case 'ListGames':
                 const keys = json.Keys;
+                keys.sort((a,b) => a-b);
+
+                const select = $('select[name="games-list"]');
+                const toAdd = [];
+                const games = [...select.options].map(opt => parseInt(opt.value));
+                if (key !== null && games.includes(key)) {
+                    for (let i=0; i<select.options.length; i++) {
+                        const opt = select.options[i];
+                        if (parseInt(opt.value) == key) {
+                            select.remove(i);
+                            break;
+                        }
+                    }
+                }
+                for (let i=0; i<select.options.length; i++) {
+                    const opt = select.options[i];
+                    if (!keys.includes(parseInt(opt.value))) {
+                        select.remove(i--);
+                    }
+                }
+                keys.forEach(k => {
+                    if (!games.includes(k) && k != key) {
+                        const opt = document.createElement('option');
+                        opt.value = k;
+                        opt.innerHTML = `Game ${k}`;
+                        select.appendChild(opt);
+                    }
+                });
                 break;
-            case 'LoadBoard':
+            case 'LoadBoard': {
                 const boardPlan = JSON.parse(json.BoardPlan);
                 board = new Board(canvas);
                 initBoard(board, boardPlan);
                 break;
+            }
+            case 'NewGame':
+                key = json.Key;
+                me = 0;
+                break;
+            case 'Move':
+                const move = json.Move;
+                const player = json.Player;
+                // We check the possible moves
+                // And perform the move at the same time
+                const moves = getPossibleMoves(board);
+                let valid = false;
+                for (let i=0; i<moves.length; i++) {
+                    if (moves[i][1] == move) {
+                        valid = true;
+                        const paths = getShortestPaths(board, moves[i][0], move);
+                        paths.forEach(path => {
+                            for (let j=0; j<path.length-1; j++) {
+                                board.points[path[j]].player = player == 0 ? "black" : "white";
+                            }
+                        });
+                    }
+                }
+                // The move wasn't in the possible moves
+                if (!valid) {
+                    break;
+                }
+                //board.points[move].player = player == 0 ? "black" : "white";
+                board.player = player == 0 ? "white" : "black";
+                board.repaint();
+                break;
+            case 'JoinGame': {
+                key = json.Key; 
+                me = 1;
+                const boardPlan = JSON.parse(json.BoardPlan);
+                const pts = json.Points;
+                board = new Board(canvas);
+                initBoard(board, boardPlan);
+                let n = 0;
+                for (let i=0; i<pts.length; i++) {
+                    if (pts[i] != -1) {
+                        n++;
+                        board.points[i].player = pts[i] == 0 ? "black" : "white";
+                    } else {
+                        board.points[i].player = null;
+                    }
+                }
+                board.player = n % 2 == 0 ? "black" : "white";
+                board.repaint();
+                break;
+            }
         }
     }
     
@@ -219,105 +315,78 @@ window.addEventListener('load', () => {
     $('#load').addEventListener('click', () => {
         const idx = $('#boards').selectedIndex;
         if (idx == -1) return;
-        const req = {Action: 'LoadBoard', BoardName: $('#boards').options[idx].innerText};
+        boardName = $('#boards').options[idx].innerText;
+        const req = {Action: 'LoadBoard', BoardName: boardName};
         conn.send(JSON.stringify(req));
     });
 
     $('#canvas').addEventListener('mousemove', (e) => {
-        if (board && getNumPieces(board) < 4) {
+        if (board && (getNumPieces(board) < 4 || (!gameOver(board) && (me == getTurn(board) % 2)))) {
             board.hover(e.offsetX, e.offsetY);
             board.repaint();
         }
     });
 
     canvas.addEventListener('click', e => {
-        if (board && getNumPieces(board) < 4) {
+        if (board && (getNumPieces(board) < 4 || (!gameOver(board) && (me == getTurn(board) % 2)))) {
+            const pts = transformPoints(board);
             board.click(e.offsetX, e.offsetY);
             board.repaint();
-            const pts = transformPoints(board);
-            for (let i=0; i<pts.length; i++) {
-                for (let j=i+1; j<pts.length; j++) {
-                    if (pts[i] == pts[j] && pts[i] != -1) {
-                        console.log(i, j, pts[i], pts[j], getShortestPaths(board, i, j));
-                    }
+            if (getNumPieces(board) == 4) {
+                const moves = getPossibleMoves(board);
+                if (moves.length == 0) {
+                    drawText(board.canvas.getContext('2d'), 
+                        "There are no possible starting moves, try again", 
+                        new Point(canvas.width/2, 40),
+                        'red', 
+                        'bold 28px sans', 
+                        true);
+                    drawText(board.canvas.getContext('2d'), 
+                        "(place pieces next to each other)", 
+                        new Point(canvas.width/2, 70),
+                        'red', 
+                        'bold 28px sans', 
+                        true);
+                } else {
+                    drawText(board.canvas.getContext('2d'), 
+                        "You may now start a game", 
+                        new Point(canvas.width/2, 40),
+                        'red', 
+                        'bold 28px sans', 
+                        true);
+                    $('#new').disabled = false;
+                    $('#new-ai').disabled = false;
+                }
+            }
+            // Playing a move
+            // We take back a move and only put it back after an ack from the server
+            if (getNumPieces(board) > 4) {
+                const pts2 = transformPoints(board);
+                const move = getMove(pts, pts2);
+                if (move != -1) {
+                    board.points[move].player = null;
+                    board.player = getTurn(board) % 2 == 0 ? "black" : "white";
+                    conn.send(JSON.stringify({Action: 'Move', Key: key, Move: move}));    
                 }
             }
         }
+    });
+
+    $('#new').addEventListener('click', () => {
+        const pts = transformPoints(board);
+        const ns = transformNeighbors(board);
+        const req = {Action: 'NewGame', AIGame: false, BoardName: boardName, Points: pts, Neighbors: ns};
+        conn.send(JSON.stringify(req));
+        $('#new').disabled = true;
+        $('#new-ai').disabled = true;
+    });
+
+    $('#join').addEventListener('click', () => {
+        const idx = $('select[name="games-list"]').selectedIndex;
+        if (idx == -1) return;
+        const k = parseInt($('select[name="games-list"]').options[idx].value);
+        const req = {Action: 'JoinGame', Key: k};
+        conn.send(JSON.stringify(req));
     });
 
 });
-
-        /*
-        // List of integer game ids
-        json.sort((a,b) => a-b);
-
-        const select = $('select[name="games-list"]');
-        const toAdd = [];
-        const games = [...select.options].map(opt => parseInt(opt.value));
-        if (game && games.includes(game.id)) {
-            for (let i=0; i<select.options.length; i++) {
-                const opt = select.options[i];
-                if (parseInt(opt.value) == game.id) {
-                    select.remove(i);
-                    break;
-                }
-            }
-        } 
-        for (let i=0; i<select.options.length; i++) {
-            const opt = select.options[i];
-            if (!json.includes(parseInt(opt.value))) {
-                select.remove(i--);
-            }
-        }
-        json.forEach(key => {
-            if (!games.includes(key) && !(game && game.id == key)) {
-                const opt = document.createElement('option');
-                opt.value = key;
-                opt.innerHTML = `Game ${key}`;
-                select.appendChild(opt);
-            }
-        });
-    }
-    
-    const connBoards = new WebSocket(`ws://${location.host}/boards`);
-
-    setInterval(e => {
-        if (!conn.readyState == 1) return;
-        conn.send(JSON.stringify({Action: 'List'}));
-    }, 1000);
-    
-    setInterval(e => {
-        if (!connBoards.readyState == 1) return;
-        connBoards.send(JSON.stringify({Action: 'List'}));
-    }, 1000);
-
-    $('#load').addEventListener('click', () => {
-        const idx = $('#boards').selectedIndex;
-        if (idx == -1) return;
-        const req = {Action: 'Load', Player: $('#boards').options[idx].innerText};
-        connBoards.send(JSON.stringify(req));
-    });
-
-    connBoards.onmessage = e => {
-        const msg = JSON.parse(e.data);
-        if (msg.Action == 'List') {
-            JSON.parse(msg.Payload).forEach(name => {
-                const existing = $$('#boards option');
-                let found = false;
-                for (let i=0; i<existing.length; i++) {
-                    if (existing[i].innerText == name) {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found) {
-                    const opt = document.createElement('option');
-                    opt.innerText = name;
-                    $('#boards').appendChild(opt);
-                }
-            });
-        } else if (msg.Action == 'Load') {
-            boardjson = msg.Payload;
-            initBoard(new Board(canvas));
-        }
-    }*/

@@ -46,7 +46,7 @@ type Request struct {
 // LoadBoard: BoardPlan
 // ListGames: Keys
 // NewGame: Key
-// JoinGame: BoardPlan, Points, Neighbors
+// JoinGame: Key, BoardPlan, Points (neighbors implicit in BoardPlan)
 // Move: Player, Move
 // Concede: Player
 // Chat: Player, Text
@@ -56,7 +56,6 @@ type Reply struct {
     Action string
     BoardPlan string
     Points []int
-    Neighbors [][]int
     BoardNames []string
     Keys []int
     Move int
@@ -246,12 +245,33 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 log.Println(err)
                 continue
             }
+        case "JoinGame":
+            player = 1
+            key := req.Key
+            game := games[key]
+            if game == nil {
+                log.Println("Game not found")
+                continue
+            }
+            game.Conns = append(game.Conns, conn)
+            reply := Reply{Action: "JoinGame", Key: key, BoardPlan: game.BoardPlan, Points: game.Board.Points}
+            jsn, _ := json.Marshal(reply)
+            err := conn.WriteMessage(websocket.TextMessage, jsn)
+            if err != nil {
+                log.Println(err)
+                continue
+            }
         // Move
         case "Move":
             key := req.Key
             move := req.Move
             game := games[key]
-            game.Board.Points[move] = player
+            // Check if the move is legal and make the move
+            if !game.Board.MoveIsLegal(move) {
+                log.Println("Illegal move")
+                continue
+            }
+            game.Board.MakeMove(move)
             reply := Reply{Action: "Move", Player: player, Move: move}
             jsn, _ := json.Marshal(reply)
             err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
