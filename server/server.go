@@ -357,5 +357,5 @@ func main() {
     log.SetFlags(0)
     ServeLocalFiles([]string{"", "/js", "/css"})
     http.HandleFunc("/ws", Socket)
-    log.Fatal(http.ListenAndServe(":8002", nil))
+    log.Fatal(http.ListenAndServe(":8003", nil))
 }
