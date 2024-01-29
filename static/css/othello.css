@@ -1,0 +1,47 @@
+#canvas {
+    border: 1px solid black;
+}
+#main {
+    display: flex;
+    align-items: flex-start;
+}
+#left {
+    width: 820px;
+}
+#side {
+    width: 350px;
+    margin-left: 20px;
+}
+#side2 {
+    width: 200px;
+    margin-left: 20px;
+}
+#chat {
+    width: 100%;
+    height: 140px;
+}
+#message {
+    width: 100%;
+}
+#chat-div {
+    margin-bottom: 10px;
+}
+#fillplan {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+#fillplan button, #boardplan button {
+    margin-left: 10px;
+}
+#upload, #load {
+    margin-top: 10px;
+}
+#boards {
+    width: 100%;
+    height: 250px;
+}
+select[name='games-list'] {
+    margin-bottom: 10px;
+    width: 280px;
+    min-height: 200px;
+}

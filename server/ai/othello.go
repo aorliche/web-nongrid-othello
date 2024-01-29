@@ -209,6 +209,18 @@ func (board *Board) Eval(me int) float64 {
     return float64(sum)
 }
 
+func (board *Board) GetScores() [2]int {
+    scores := [2]int{}
+    for _,p := range board.Points {
+        if p == 0 {
+            scores[0] += 1
+        } else if p == 1 {
+            scores[1] += 1
+        }
+    }
+    return scores
+}
+
 func (board *Board) GetCandidates(me int) []func() *Board {
     cand := make([]func() *Board, 0)
     if board.Turn % 2 != me {

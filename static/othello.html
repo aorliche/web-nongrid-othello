@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Non-Euclidean Reversi (Othello)</title>
+    <script src="/js/othello.js" type="module"></script>
+    <link rel="stylesheet" href="/css/othello.css">
+</head>
+<body>
+    <h1>Non-Euclidean Reversi (Othello)</h1>
+    <div id='main'>
+        <div id='left'>
+            <ul>
+                <li>Begin the game by placing 4 pieces (2 black, 2 white).</li>
+                <li>Then black and white take turns placing pieces that capture shortest paths of 
+                    enemy pieces</li>
+                <li>The enemy pieces captured are the ones on the shortest path(s) between your existing piece and the one you just placed</li>
+            </ul>
+            <canvas id='canvas' width='800' height='800'></canvas>
+        </div>
+        <div id='side'>
+            <button id='new' disabled>Start New Game</button>
+            <button id='new-ai' disabled>Start New Computer Game</button><br>
+            <p id='info'>
+                Black: <span id='black'></span><br>
+                White: <span id='white'></span>
+            </p>
+            <h3>Open Games</h3>
+            <select name='games-list' multiple></select><br>
+            <button id='join'>Join Game</button>
+            <h3>Chat</h3>
+            <div id='chat-div'>
+                <textarea readonly id='chat'></textarea><br>
+                <input type='text' id='message'>
+            </div>
+            <button id='send'>Send</button>
+            <button id='concede'>Concede</button>
+        </div>
+        <div id='side2'>
+            <h3>Load Board</h3>
+            <select id='boards' multiple></select><br>
+            <button id='load'>Load</button>
+            <p><a href='create.html'>Create New Board</a></p>
+        </div>
+    </div>
+</body>
+</html>

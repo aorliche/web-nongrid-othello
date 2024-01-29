@@ -380,7 +380,7 @@ class Board {
                 const sav = this.savePoints();
                 p.player = this.player;
                 this.player = this.player == 'black' ? 'white' : 'black';
-                this.cullCaptured(this.player);
+                /*this.cullCaptured(this.player);
                 this.cullCaptured(this.player == 'black' ? 'white' : 'black');
                 if (this.pointsInHistory(this.savePoints())) {
                     this.player = this.player == 'black' ? 'white' : 'black';
@@ -388,7 +388,8 @@ class Board {
                     return;
                 }
                 good = true;
-                this.history.push(JSON.stringify(sav));
+                this.history.push(JSON.stringify(sav));*/
+                good = true;
             }
         });
         return good;
