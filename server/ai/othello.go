@@ -2,6 +2,7 @@ package ai
 
 import (
     //"fmt"
+    "sort"
 )
 
 type Board struct {
@@ -169,7 +170,7 @@ func (board *Board) GetPossibleMoves() [][2]int {
             paths := board.GetShortestPaths(fromP, toP)
             // Only those paths with all the other player's pieces are allowed
             // Other than starting and ending points
-            // Also they must have length > 3
+            // Also they must have length >= 3
             valid := false
             nextpath:
             for _,path := range paths {
@@ -241,18 +242,25 @@ func (board *Board) MakeMove(to int) {
         return true
     }
     moves := board.GetPossibleMoves()
+    paths := [][]int{}
     for _,move := range moves {
         if move[1] != to {
             continue
         }
-        paths := board.GetShortestPaths(move[0], move[1])
-        for _,path := range paths {
-            if (!validPath(path)) {
-                continue
-            }
-            for i := 0; i < len(path); i++ {
-                board.Points[path[i]] = board.Points[move[0]]
-            }
+        ps := board.GetShortestPaths(move[0], move[1])
+        paths = append(paths, ps...)
+    }
+    // Fill in short paths first
+    sort.Slice(paths, func(i, j int) bool {
+        return len(paths[i]) < len(paths[j])
+    });
+    //fmt.Println(paths)
+    for _,path := range paths {
+        if (!validPath(path)) {
+            continue
+        }
+        for i := 0; i < len(path); i++ {
+            board.Points[path[i]] = board.Points[path[0]]
         }
     }
     board.Turn += 1

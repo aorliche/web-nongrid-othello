@@ -184,6 +184,25 @@ function getMove(pts1, pts2) {
     return -1;
 }
 
+function getScores(board) {
+    const pts = transformPoints(board);
+    const scores = [0,0];
+    for (let i=0; i<pts.length; i++) {
+        if (pts[i] == 0) {
+            scores[0]++;
+        } else if (pts[i] == 1) {
+            scores[1]++;
+        }
+    }
+    return scores;
+}
+
+function displayScores(board) {
+    const scores = getScores(board);
+    $('#black').innerText = scores[0];
+    $('#white').innerText = scores[1];
+}
+
 function gameOver(board) {
 
 }
@@ -253,16 +272,30 @@ window.addEventListener('load', () => {
             case 'NewGame':
                 key = json.Key;
                 me = 0;
+                displayScores(board);
                 break;
             case 'Move':
                 const move = json.Move;
                 const player = json.Player;
                 // We check the possible moves
                 // And perform the move at the same time
-                const pts = transformPoints(board);
                 const moves = getPossibleMoves(board);
+                let paths = [];
                 let valid = false;
+                for (let i=0; i<moves.length; i++) {
+                    if (moves[i][1] == move) {
+                        valid = true;
+                        const ps = getShortestPaths(board, moves[i][0], move);
+                        paths = paths.concat(ps);
+                    }
+                }
+                // The move wasn't in the possible moves
+                if (!valid) {
+                    break;
+                }
+                paths.sort((a,b) => a.length - b.length);
                 function validPath(path) {
+                    const pts = transformPoints(board);
                     for (let i=1; i<path.length-1; i++) {
                         if (pts[path[i]] != 1-pts[path[0]]) {
                             return false;
@@ -270,27 +303,18 @@ window.addEventListener('load', () => {
                     }
                     return true;
                 }
-                for (let i=0; i<moves.length; i++) {
-                    if (moves[i][1] == move) {
-                        valid = true;
-                        const paths = getShortestPaths(board, moves[i][0], move);
-                        paths.forEach(path => {
-                            if (!validPath(path)) {
-                                return;
-                            }
-                            for (let j=0; j<path.length; j++) {
-                                board.points[path[j]].player = player == 0 ? "black" : "white";
-                            }
-                        });
+                paths.forEach(path => {
+                    if (!validPath(path)) {
+                        return;
                     }
-                }
-                // The move wasn't in the possible moves
-                if (!valid) {
-                    break;
-                }
+                    for (let j=0; j<path.length; j++) {
+                        board.points[path[j]].player = player == 0 ? "black" : "white";
+                    }
+                });
                 //board.points[move].player = player == 0 ? "black" : "white";
                 board.player = player == 0 ? "white" : "black";
                 board.repaint();
+                displayScores(board);
                 break;
             case 'JoinGame': {
                 key = json.Key; 
@@ -310,6 +334,7 @@ window.addEventListener('load', () => {
                 }
                 board.player = n % 2 == 0 ? "black" : "white";
                 board.repaint();
+                displayScores(board);
                 break;
             }
         }
