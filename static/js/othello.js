@@ -259,14 +259,26 @@ window.addEventListener('load', () => {
                 const player = json.Player;
                 // We check the possible moves
                 // And perform the move at the same time
+                const pts = transformPoints(board);
                 const moves = getPossibleMoves(board);
                 let valid = false;
+                function validPath(path) {
+                    for (let i=1; i<path.length-1; i++) {
+                        if (pts[path[i]] != 1-pts[path[0]]) {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
                 for (let i=0; i<moves.length; i++) {
                     if (moves[i][1] == move) {
                         valid = true;
                         const paths = getShortestPaths(board, moves[i][0], move);
                         paths.forEach(path => {
-                            for (let j=0; j<path.length-1; j++) {
+                            if (!validPath(path)) {
+                                return;
+                            }
+                            for (let j=0; j<path.length; j++) {
                                 board.points[path[j]].player = player == 0 ? "black" : "white";
                             }
                         });

@@ -232,6 +232,14 @@ func (board *Board) MoveIsLegal(to int) bool {
 }
 
 func (board *Board) MakeMove(to int) {
+    validPath := func(path []int) bool {
+        for i := 1; i < len(path) - 1; i++ {
+            if board.Points[path[i]] != 1-board.Points[path[0]] {
+                return false
+            }
+        }
+        return true
+    }
     moves := board.GetPossibleMoves()
     for _,move := range moves {
         if move[1] != to {
@@ -239,11 +247,15 @@ func (board *Board) MakeMove(to int) {
         }
         paths := board.GetShortestPaths(move[0], move[1])
         for _,path := range paths {
-            for i := 1; i < len(path) - 1; i++ {
+            if (!validPath(path)) {
+                continue
+            }
+            for i := 0; i < len(path); i++ {
                 board.Points[path[i]] = board.Points[move[0]]
             }
         }
     }
+    board.Turn += 1
 }
 
 func (board *Board) GetCandidates(me int) []func() *Board {
