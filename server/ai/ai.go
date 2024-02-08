@@ -31,12 +31,6 @@ func Search(board *Board, me int, depth int, timeMillis int) *Board {
     var res *Board
     for d := 1; d < depth; d++ {
         _, fn, fin, _ := SearchDeepAlphaBeta(board.Clone(), me, d, math.Inf(-1), math.Inf(1), true, startTime, timeMillis)
-        /*if st != nil {
-            if d == 1 {
-                fmt.Println("board", board)
-            }
-            fmt.Println("me", me, "d", d, "see", board, "val", board.Eval(me))
-        }*/
         if fn != nil && fin {
             res = fn()
         } else {
@@ -67,13 +61,7 @@ func SearchDeepAlphaBeta(board *Board, me int, depth int, alpha float64, beta fl
     if time.Since(startTime).Milliseconds() > int64(timeMillis) {
         return nil, nil, false, 0
     }
-    var me2 int
-    if maxNotMin {
-        me2 = me
-    } else {
-        me2 = 1-me
-    }
-    fns := board.GetCandidates(me2)
+    fns := board.GetCandidates()
     if len(fns) == 0 {
         var val float64
         if maxNotMin {

@@ -7,10 +7,10 @@ import (
 
 func main() {
     board := ai.MakeTraditional(4)
-    board.Points[5] = 0
-    board.Points[6] = 1
-    board.Points[9] = 1
-    board.Points[10] = 0
+    board.Premove(5, 0)
+    board.Premove(6, 1)
+    board.Premove(9, 1)
+    board.Premove(10, 0)
     recvChan := make(chan bool)
     sendChans := make([]chan bool, 0)
     for i := 0; i < 2; i++ {
@@ -18,10 +18,10 @@ func main() {
         go ai.Loop(i, board, sendChans[i], recvChan, 20, 10000)
     }
     for {
-        fmt.Println(board.Turn)
         sendChans[board.Turn % 2] <- true
         <-recvChan
-        fmt.Println(board.Eval(0), board)
+        fmt.Println(board.Eval(0), "-", board.Turn)
+        board.PrintTraditional()
         if board.GameOver() {
             break
         }

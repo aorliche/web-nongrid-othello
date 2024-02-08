@@ -1,75 +1,106 @@
 package ai
 
 import (
+    "fmt"
     "testing"
 )
 
 func TestMakeTraditional(t *testing.T) {
     board := MakeTraditional(4)
-    expect := [][]int{[]int{1,4,5}, []int{0,2,4,5,6}, []int{0,1,2,4,6,8,9,10}, []int{9,10,11,13,15}}
-    got := board.Neighbors[:2]
-    got = append(got, board.Neighbors[5])
-    got = append(got, board.Neighbors[14])
+    expect := [][]int{[]int{0,1,2,3}}
+    got := board.Lines[:1]
     for i := range got {
-        if len(got[i]) != len(expect[i]) {
+        if len(got[i].Points) != len(expect[i]) {
             t.Errorf("got %v, expect %v", got[i], expect[i])
         }
-        for _,ep := range expect[i] {
-            if !Includes(got[i], ep) {
+        for j,ep := range expect[i] {
+            if got[i].Points[j].Id != ep {
                 t.Errorf("got %v, expect %v", got[i], expect[i])
             }
         }
+    }
+    if len(board.Lines) != 14 {
+        t.Errorf("got %v, expect %v", len(board.Lines), 14)
     }
 }
 
-func TestShortestPaths(t *testing.T) {
-    var expect [][]int
-    var got [][]int
-    test := func(got [][]int, expect [][]int) {
-        if len(got) != len(expect) {
-            t.Errorf("got %v, expect %v", got, expect)
-            return
-        }
-        for i := range got {
-            if !Equals(got[i], expect[i]) {
-                t.Errorf("got %v, expect %v", got[i], expect[i])
-            }
-        }
-    }
+func TestCaptureBackwards(t *testing.T) {
     board := MakeTraditional(4)
-    expect = [][]int{[]int{0,1}}
-    got = board.GetShortestPaths(0,1)
-    test(got, expect)
-    expect = [][]int{[]int{0,5,10,15}}
-    got = board.GetShortestPaths(0,15)
-    test(got, expect)
-    // The generalized rules allow for "weird" captures on traditional boards
-    // The existence of more than one shortest path on a traditional board
-    // Means a capture between the two points shouldn't be allowed
-    // *** This doesn't cover all cases ***
-    // There is in general more than one path even for an allowed from capture to capture
-    // pair of points
-    expect = [][]int{[]int{0,1,6}, []int{0,5,6}}
-    got = board.GetShortestPaths(0,6)
-    test(got, expect)
+    board.Premove(0, 0)
+    board.Premove(1, 1)
+    board.Premove(4, 1)
+    capt := CaptureBackwards(board.Lines[0].Points, 1, 0, false)
+    if capt != true {
+        t.Errorf("got %v, expect %v", capt, true)
+    }
 }
 
 func TestGetPossibleMoves(t *testing.T) {
-    var expect [][2]int
-    var got [][2]int
     board := MakeTraditional(4)
-    board.Points[0] = 0
-    board.Points[1] = 1
-    expect = [][2]int{{0,2}, {0,6}}
-    got = board.GetPossibleMoves()
+    board.Premove(0, 0)
+    board.Premove(1, 1)
+    board.Premove(4, 1)
+    got := board.GetPossibleMoves()
+    expect := []int{2,8}
     if !Equals(got, expect) {
         t.Errorf("got %v, expect %v", got, expect)
     }
-    board.Points[4] = 0
-    board.Turn = 1
-    expect = [][2]int{{1,8}, {1,9}}
+    board = MakeTraditional(4)
+    board.Premove(5, 0)
+    board.Premove(6, 1)
+    board.Premove(9, 1)
+    board.Premove(10, 0)
     got = board.GetPossibleMoves()
+    expect = []int{2,7,8,13}
+    if len(expect) != len(got) {
+        t.Errorf("got %v, expect %v", got, expect)
+    }
+    for _,e := range expect {
+        if !Includes(got, e) {
+            t.Errorf("got %v, expect %v", got, expect)
+            break
+        }
+    }
+    board = MakeTraditional(4)
+    board.Premove(5, 0)
+    board.Premove(10, 0)
+    board.Premove(15, 1)
+    board.Turn = 1
+    got = board.GetPossibleMoves()
+    expect = []int{0}
     if !Equals(got, expect) {
         t.Errorf("got %v, expect %v", got, expect)
     }
 }
+
+func TestGetCandidates(t *testing.T) {
+    board := MakeTraditional(4)
+    board.Premove(5, 0)
+    board.Premove(6, 1)
+    board.Premove(9, 1)
+    board.Premove(10, 0)
+    cand := board.GetCandidates()
+    next := cand[0]()
+    if next.Turn != 1 {
+        t.Errorf("got %v, expect %v", next.Turn, 1)
+    }
+}
+
+func TestGetCandidates2(t *testing.T) {
+    board := MakeTraditional(4)
+    board.Premove(4, 1)
+    board.Premove(5, 1)
+    board.Premove(2, 0)
+    board.Premove(6, 0)
+    board.Premove(8, 0)
+    board.Premove(9, 0)
+    board.Premove(10, 0)
+    board.Turn = 1
+    fmt.Println(board.GetPossibleMoves())
+    cand := board.GetCandidates()
+    for _,c := range cand {
+        next := c()
+        next.PrintTraditional()
+    }
+}
+
