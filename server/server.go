@@ -213,6 +213,7 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 Lines: ai.PointsToLines(points),
                 Turn: 0,
             }
+            //board.CullLongIntervalLines(100)
             plan, err := GetBoard(name)
             if err != nil {
                 log.Println(err)

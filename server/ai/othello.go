@@ -142,6 +142,17 @@ func PointsToLines(points []Point) []Line {
     return keep
 }
 
+func (board *Board) CullLongIntervalLines(cutoff float64) {
+    keep := make([]Line, 0)
+    for _,line := range board.Lines {
+        d := Distance(board.Points[line.Ids[0]], board.Points[line.Ids[1]])
+        if d < cutoff {
+            keep = append(keep, line)
+        }
+    }
+    board.Lines = keep
+}
+
 func MakeTraditional(n int) *Board {
     points := make([]Point, n * n)
     for r := 0; r < n; r++ {
