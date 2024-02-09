@@ -269,10 +269,9 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 continue
             }
             game.Board.MakeMove(move)
-            log.Println(game.Board.Points)
             reply := Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: make([]int, 0)}
             jsn, _ := json.Marshal(reply)
-            err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
+            err := game.Conns[player].WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
                 log.Println(err)
                 continue
@@ -282,7 +281,7 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             } else if len(game.Conns) == 2 {
                 reply = Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: game.Board.GetPossibleMoves()}
                 jsn, _ = json.Marshal(reply)
-                err = game.Conns[1].WriteMessage(websocket.TextMessage, jsn)
+                err = game.Conns[1-player].WriteMessage(websocket.TextMessage, jsn)
                 if err != nil {
                     log.Println(err)
                     continue
