@@ -10,13 +10,8 @@ func TestMakeTraditional(t *testing.T) {
     expect := [][]int{[]int{0,1,2,3}}
     got := board.Lines[:1]
     for i := range got {
-        if len(got[i].Points) != len(expect[i]) {
+        if !Equals(got[i].Ids, expect[i]) {
             t.Errorf("got %v, expect %v", got[i], expect[i])
-        }
-        for j,ep := range expect[i] {
-            if got[i].Points[j].Id != ep {
-                t.Errorf("got %v, expect %v", got[i], expect[i])
-            }
         }
     }
     if len(board.Lines) != 14 {
@@ -29,7 +24,7 @@ func TestCaptureBackwards(t *testing.T) {
     board.Premove(0, 0)
     board.Premove(1, 1)
     board.Premove(4, 1)
-    capt := CaptureBackwards(board.Lines[0].Points, 1, 0, false)
+    capt := board.CaptureBackwards(board.Lines[0].Ids, 1, 0, false)
     if capt != true {
         t.Errorf("got %v, expect %v", capt, true)
     }

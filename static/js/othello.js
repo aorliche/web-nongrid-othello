@@ -10,6 +10,7 @@ let board = null;
 let me = null;
 let boardName = null;
 let key = null;
+let legalMoves = [];
    
 function initBoard(board, boardPlan) {
     const fn = (typ, n) => {
@@ -57,127 +58,19 @@ function transformPoints(board) {
     const pts = [];
     for (let i=0; i<board.points.length; i++) {
         if (board.points[i].player == 'black') {
-            pts[i] = 0;
+            pts[i] = {X: board.points[i].x, Y: board.points[i].y, Id: i, Player: 0};
         } else if (board.points[i].player == 'white') {
-            pts[i] = 1;
+            pts[i] = {X: board.points[i].x, Y: board.points[i].y, Id: i, Player: 1};
         } else {
-            pts[i] = -1;
+            pts[i] = {X: board.points[i].x, Y: board.points[i].y, Id: i, Player: -1};
         }
     }
     return pts;
 }
 
-// For whatever reason, board.neighbors is an object and not an Array
-function transformNeighbors(board) {
-    const ns = [];
-    for (let i=0; i<board.points.length; i++) {
-        ns[i] = board.neighbors[i];
-    }
-    return ns;
-}
-
-function getShortestPaths(board, p1, p2) {
-    function node2path(n, path) {
-        while (n.prev != null) {
-            path.push(n.cur);
-            n = n.prev;
-        }
-        path.push(n.cur);
-        path.reverse();
-    }
-    const visited = [];
-    const pts = transformPoints(board);
-    for (let i=0; i<pts.length; i++) {
-        visited.push(false);
-    }
-    visited[p1] = true; 
-    const start = {prev: null, cur: p1};
-    let frontier = [start];
-    while (frontier.length > 0) {
-        const next = [];
-        const nextVisited = [];
-        let finished = false;
-        for (let i=0; i<frontier.length; i++) {
-            const ns = board.neighbors[frontier[i].cur];
-            for (let j=0; j<ns.length; j++) {
-                const p = ns[j];
-                if (visited[p]) {
-                    continue
-                }
-                nextVisited.push(p);
-                next.push({prev: frontier[i], cur: p});
-                if (p == p2) {
-                    finished = true;
-                }
-            }
-        }
-        if (finished) {
-            const paths = [];
-            next.forEach(node => {
-                if (node.cur == p2) {
-                    const path = [];
-                    node2path(node, path);
-                    paths.push(path);
-                }
-            });
-            return paths;
-        }
-        frontier = next;
-        nextVisited.forEach(p => {
-            visited[p] = true;
-        });
-    }
-    return [];
-}
-
-function getPossibleMoves(board) {
-    const me = getTurn(board) % 2;
-    const other = 1-me;
-    const from = [];  
-    const to = [];
-    const pts = transformPoints(board);
-    pts.forEach((player, i) => {
-        if (player == me) {
-            from.push(i);
-        } else if (player == -1) {
-            for (let j=0; j<board.neighbors[i].length; j++) {
-                const np = board.neighbors[i][j];
-                if (pts[np] == other) {
-                    to.push(i);
-                    break
-                }
-            }
-        }
-    });
-    const moves = [];
-    to.forEach(toP => {
-        from.forEach(fromP => {
-            const paths = getShortestPaths(board, fromP, toP);
-            let valid = false;
-            nextpath: 
-            for (let i=0; i<paths.length; i++) {
-                if (paths[i].length < 3) {
-                    continue;
-                }
-                for (let j=1; j<paths[i].length - 1; j++) {
-                    if (pts[paths[i][j]] != other) {
-                        continue nextpath;
-                    }
-                }
-                valid = true;
-                break;
-            }
-            if (valid) {
-                moves.push([fromP, toP]);
-            }
-        });
-    });
-    return moves;
-}
-
 function getMove(pts1, pts2) {
     for (let i=0; i<pts1.length; i++) {
-        if (pts1[i] == -1 && pts2[i] != -1) {
+        if (pts1[i].Player == -1 && pts2[i].Player != -1) {
             return i;
         }
     }
@@ -188,9 +81,9 @@ function getScores(board) {
     const pts = transformPoints(board);
     const scores = [0,0];
     for (let i=0; i<pts.length; i++) {
-        if (pts[i] == 0) {
+        if (pts[i].Player == 0) {
             scores[0]++;
-        } else if (pts[i] == 1) {
+        } else if (pts[i].Player == 1) {
             scores[1]++;
         }
     }
@@ -273,45 +166,20 @@ window.addEventListener('load', () => {
                 key = json.Key;
                 me = 0;
                 displayScores(board);
+                legalMoves = json.LegalMoves;
                 break;
             case 'Move':
-                const move = json.Move;
+                console.log(json);
                 const player = json.Player;
-                // We check the possible moves
-                // And perform the move at the same time
-                const moves = getPossibleMoves(board);
-                let paths = [];
-                let valid = false;
-                for (let i=0; i<moves.length; i++) {
-                    if (moves[i][1] == move) {
-                        valid = true;
-                        const ps = getShortestPaths(board, moves[i][0], move);
-                        paths = paths.concat(ps);
-                    }
-                }
-                // The move wasn't in the possible moves
-                if (!valid) {
-                    break;
-                }
-                paths.sort((a,b) => a.length - b.length);
-                function validPath(path) {
-                    const pts = transformPoints(board);
-                    for (let i=1; i<path.length-1; i++) {
-                        if (pts[path[i]] != 1-pts[path[0]]) {
-                            return false;
-                        }
-                    }
-                    return true;
-                }
-                paths.forEach(path => {
-                    if (!validPath(path)) {
-                        return;
-                    }
-                    for (let j=0; j<path.length; j++) {
-                        board.points[path[j]].player = player == 0 ? "black" : "white";
-                    }
+                const points = json.Points;
+                legalMoves = json.LegalMoves;
+                board.points.forEach((pt, i) => {
+                   if (points[i].Player != -1) {
+                       pt.player = points[i].Player == 0 ? "black" : "white";
+                   } else {
+                       pt.player = null;
+                   }
                 });
-                //board.points[move].player = player == 0 ? "black" : "white";
                 board.player = player == 0 ? "white" : "black";
                 board.repaint();
                 displayScores(board);
@@ -320,19 +188,16 @@ window.addEventListener('load', () => {
                 key = json.Key; 
                 me = 1;
                 const boardPlan = JSON.parse(json.BoardPlan);
-                const pts = json.Points;
+                const points = json.Points;
+                legalMoves = json.LegalMoves;
                 board = new Board(canvas);
                 initBoard(board, boardPlan);
-                let n = 0;
-                for (let i=0; i<pts.length; i++) {
-                    if (pts[i] != -1) {
-                        n++;
-                        board.points[i].player = pts[i] == 0 ? "black" : "white";
-                    } else {
-                        board.points[i].player = null;
+                board.points.forEach((pt, i) => {
+                    if (points[i].Player != -1) {
+                        pt.player = points[i].Player == 0 ? "black" : "white";
                     }
-                }
-                board.player = n % 2 == 0 ? "black" : "white";
+                });
+                board.player = getNumPieces(board) % 2 == 0 ? "black" : "white";
                 board.repaint();
                 displayScores(board);
                 break;
@@ -355,64 +220,60 @@ window.addEventListener('load', () => {
         boardName = $('#boards').options[idx].innerText;
         const req = {Action: 'LoadBoard', BoardName: boardName};
         conn.send(JSON.stringify(req));
+        legalMoves = [];
     });
 
     $('#canvas').addEventListener('mousemove', (e) => {
-        if (board && (getNumPieces(board) < 4 || (!gameOver(board) && (me == getTurn(board) % 2)))) {
+        if (board && getNumPieces(board) < 4) {
             board.hover(e.offsetX, e.offsetY);
+            board.repaint();
+        } else if (board && legalMoves.length > 0) {
+            const p = board.hover(e.offsetX, e.offsetY);
+            if (p && !legalMoves.includes(p.id)) {
+                p.hover = false;
+            }
             board.repaint();
         }
     });
 
     canvas.addEventListener('click', e => {
-        if (board && (getNumPieces(board) < 4 || (!gameOver(board) && (me == getTurn(board) % 2)))) {
-            const pts = transformPoints(board);
+        if (board && getNumPieces(board) < 4) {
             board.click(e.offsetX, e.offsetY);
             board.repaint();
             if (getNumPieces(board) == 4) {
-                const moves = getPossibleMoves(board);
-                if (moves.length == 0) {
-                    drawText(board.canvas.getContext('2d'), 
-                        "There are no possible starting moves, try again", 
-                        new Point(canvas.width/2, 40),
-                        'red', 
-                        'bold 28px sans', 
-                        true);
-                    drawText(board.canvas.getContext('2d'), 
-                        "(place pieces next to each other)", 
-                        new Point(canvas.width/2, 70),
-                        'red', 
-                        'bold 28px sans', 
-                        true);
-                } else {
-                    drawText(board.canvas.getContext('2d'), 
-                        "You may now start a game", 
-                        new Point(canvas.width/2, 40),
-                        'red', 
-                        'bold 28px sans', 
-                        true);
-                    $('#new').disabled = false;
-                    $('#new-ai').disabled = false;
-                }
+                drawText(board.canvas.getContext('2d'), 
+                    "You may now start a game", 
+                    new Point(canvas.width/2, 40),
+                    'red', 
+                    'bold 28px sans', 
+                    true);
+                $('#new').disabled = false;
+                $('#new-ai').disabled = false;
             }
-            // Playing a move
-            // We take back a move and only put it back after an ack from the server
-            if (getNumPieces(board) > 4) {
-                const pts2 = transformPoints(board);
-                const move = getMove(pts, pts2);
-                if (move != -1) {
-                    board.points[move].player = null;
-                    board.player = getTurn(board) % 2 == 0 ? "black" : "white";
-                    conn.send(JSON.stringify({Action: 'Move', Key: key, Move: move}));    
-                }
+        } else if (board && legalMoves.length > 0) {
+            // Check for legality of move
+            const p = board.hover(e.offsetX, e.offsetY);
+            if (!p) 
+                return;
+            if (!legalMoves.includes(p.id)) 
+                return;
+            const pts = transformPoints(board);
+            board.click(e.offsetX, e.offsetY);
+            board.repaint();
+            const pts2 = transformPoints(board);
+            const move = getMove(pts, pts2);
+            if (move != -1) {
+                // Take back move and wait for server to give us the updated board
+                board.points[move].player = null;
+                board.player = getTurn(board) % 2 == 0 ? "black" : "white";
+                conn.send(JSON.stringify({Action: 'Move', Key: key, Move: move}));    
             }
         }
     });
 
     $('#new').addEventListener('click', () => {
         const pts = transformPoints(board);
-        const ns = transformNeighbors(board);
-        const req = {Action: 'NewGame', AIGame: false, BoardName: boardName, Points: pts, Neighbors: ns};
+        const req = {Action: 'NewGame', AIGame: false, BoardName: boardName, Points: pts};
         conn.send(JSON.stringify(req));
         $('#new').disabled = true;
         $('#new-ai').disabled = true;

@@ -63,13 +63,14 @@ func SearchDeepAlphaBeta(board *Board, me int, depth int, alpha float64, beta fl
     }
     fns := board.GetCandidates()
     if len(fns) == 0 {
-        var val float64
+        /*var val float64
         if maxNotMin {
             val = math.Inf(-1)
         } else {
             val = math.Inf(1)
         }
-        return nil, nil, true, val
+        return nil, nil, true, val*/
+        return nil, nil, true, board.Eval(me)
     }
     var v float64
     var resBoard *Board

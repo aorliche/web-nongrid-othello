@@ -2,6 +2,7 @@ package main
 
 import (
     "encoding/json"
+    //"fmt"
     "log"
     "net/http"
     "os"
@@ -25,17 +26,17 @@ type Game struct {
 // ListBoards: [none]
 // LoadBoard: BoardName
 // ListGames: [none]
-// NewGame: AIGame, BoardName, Points, Neighbors (Points include initial starting points)
+// NewGame: AIGame, BoardName, Points
 // JoinGame: Key
 // Move: Key, Move
 // Concede: Key
 // Chat: Key, Text
+
 type Request struct {
     Key int
     Action string
     BoardName string
-    Points []int
-    Neighbors [][]int
+    Points []ai.Point
     Move int
     Text string
     AIGame bool
@@ -45,9 +46,9 @@ type Request struct {
 // ListBoards: BoardNames
 // LoadBoard: BoardPlan
 // ListGames: Keys
-// NewGame: Key
-// JoinGame: Key, BoardPlan, Points (neighbors implicit in BoardPlan)
-// Move: Player, Move
+// NewGame: Key, Points, LevalMoves
+// JoinGame: Key, BoardPlan, Points, LegalMoves
+// Move: Player, Points, LegalMoves
 // Concede: Player
 // Chat: Player, Text
 type Reply struct {
@@ -55,10 +56,10 @@ type Reply struct {
     Player int
     Action string
     BoardPlan string
-    Points []int
+    Points []ai.Point
     BoardNames []string
     Keys []int
-    Move int
+    LegalMoves []int
 }
 
 var games = make(map[int]*Game)
@@ -105,14 +106,6 @@ func GetBoard(name string) (string, error) {
 }
 
 func GameLoop(game *Game, recvChan chan bool, sendChan chan bool) {
-    getLastMove := func(prev *ai.Board, cur *ai.Board) int {
-        for i := 0; i < len(prev.Points); i++ {
-            if prev.Points[i] == -1 && cur.Points[i] != -1 {
-                return i
-            }
-        }
-        return -1
-    }
     board := game.Board
     for {
         prev := board.Clone()
@@ -129,9 +122,8 @@ func GameLoop(game *Game, recvChan chan bool, sendChan chan bool) {
             sendChan <- false
             break
         }
-        move := getLastMove(prev, board)
         player := prev.Turn % 2
-        reply := Reply{Action: "Move", Player: player, Move: move}
+        reply := Reply{Action: "Move", Player: player, Points: board.Points, LegalMoves: board.GetPossibleMoves()}
         jsn, _ := json.Marshal(reply)
         err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
         if err != nil {
@@ -216,10 +208,9 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             aiGame := req.AIGame
             name := req.BoardName
             points := req.Points
-            neighbors := req.Neighbors
             board := &ai.Board{
                 Points: points,
-                Neighbors: neighbors,
+                Lines: ai.PointsToLines(points),
                 Turn: 0,
             }
             plan, err := GetBoard(name)
@@ -238,7 +229,7 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 go ai.Loop(1, game.Board, sendChan, recvChan, 10, 2000)
                 go GameLoop(game, recvChan, sendChan)
             }
-            reply := Reply{Action: "NewGame", Key: key}
+            reply := Reply{Action: "NewGame", Key: key, Points: board.Points, LegalMoves: board.GetPossibleMoves()}
             jsn, _ := json.Marshal(reply)
             err = conn.WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -254,7 +245,13 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 continue
             }
             game.Conns = append(game.Conns, conn)
-            reply := Reply{Action: "JoinGame", Key: key, BoardPlan: game.BoardPlan, Points: game.Board.Points}
+            var moves []int
+            if game.Board.Turn > 0 {
+                moves = game.Board.GetPossibleMoves()
+            } else {
+                moves = make([]int, 0)
+            }
+            reply := Reply{Action: "JoinGame", Key: key, BoardPlan: game.BoardPlan, Points: game.Board.Points, LegalMoves: moves}
             jsn, _ := json.Marshal(reply)
             err := conn.WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -272,7 +269,8 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 continue
             }
             game.Board.MakeMove(move)
-            reply := Reply{Action: "Move", Player: player, Move: move}
+            log.Println(game.Board.Points)
+            reply := Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: make([]int, 0)}
             jsn, _ := json.Marshal(reply)
             err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -282,6 +280,8 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             if game.AIGame {
                 game.RecvChan <- true
             } else if len(game.Conns) == 2 {
+                reply = Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: game.Board.GetPossibleMoves()}
+                jsn, _ = json.Marshal(reply)
                 err = game.Conns[1].WriteMessage(websocket.TextMessage, jsn)
                 if err != nil {
                     log.Println(err)

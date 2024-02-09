@@ -15,7 +15,7 @@ func main() {
     sendChans := make([]chan bool, 0)
     for i := 0; i < 2; i++ {
         sendChans = append(sendChans, make(chan bool))
-        go ai.Loop(i, board, sendChans[i], recvChan, 20, 10000)
+        go ai.Loop(i, board, sendChans[i], recvChan, 20, 5000)
     }
     for {
         sendChans[board.Turn % 2] <- true

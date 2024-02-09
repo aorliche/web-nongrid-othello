@@ -15,7 +15,7 @@ type Point struct {
 
 type Line struct {
     M float64
-    Points []*Point
+    Ids []int
 }
 
 type Board struct {
@@ -67,8 +67,8 @@ func Slope(p1 Point, p2 Point) float64 {
 }
 
 func (line Line) Includes(p Point) bool {
-    for _,p2 := range line.Points {
-        if p2.Id == p.Id {
+    for _,pId := range line.Ids {
+        if pId == p.Id {
             return true
         }
     }
@@ -99,14 +99,14 @@ func PointsToLines(points []Point) []Line {
                     break
                 }
                 if !line.Includes(p1) {
-                    if ApproxEq(Slope(*line.Points[0], p1), m) {
-                        lines[k].Points = append(lines[k].Points, &p1)
+                    if ApproxEq(Slope(points[line.Ids[0]], p1), m) {
+                        lines[k].Ids = append(lines[k].Ids, p1.Id)
                         found = true
                     }
                 } 
                 if !line.Includes(p2) {
-                    if ApproxEq(Slope(*line.Points[0], p2), m) {
-                        lines[k].Points = append(lines[k].Points, &p2)
+                    if ApproxEq(Slope(points[line.Ids[0]], p2), m) {
+                        lines[k].Ids = append(lines[k].Ids, p2.Id)
                         found = true
                     }
                 }
@@ -116,26 +116,26 @@ func PointsToLines(points []Point) []Line {
             }
             // New line
             if !found {
-                line := Line{m, []*Point{&p1, &p2}}
+                line := Line{m, []int{p1.Id, p2.Id}}
                 lines = append(lines, line)
             }
         }
     }
     // Sort points in lines
     for _,line := range lines {
-        sort.Slice(line.Points, func(i, j int) bool {
-            dx := line.Points[i].X - line.Points[j].X
+        sort.Slice(line.Ids, func(i, j int) bool {
+            dx := points[line.Ids[i]].X - points[line.Ids[j]].X
             if !ApproxEq(dx, 0) {
                 return dx < 0
             }
-            dy := line.Points[i].Y - line.Points[j].Y
+            dy := points[line.Ids[i]].Y - points[line.Ids[j]].Y
             return dy < 0
         })
     }
     // Cull lines with only two points
     keep := make([]Line, 0)
     for _,line := range lines {
-        if len(line.Points) > 2 {
+        if len(line.Ids) > 2 {
             keep = append(keep, line)
         }
     }
@@ -155,7 +155,7 @@ func MakeTraditional(n int) *Board {
     // Cull lines with d > sqrt(2)+delta
     keep := make([]Line, 0)
     for _,line := range lines {
-        d := Distance(*line.Points[0], *line.Points[1])
+        d := Distance(points[line.Ids[0]], points[line.Ids[1]])
         if d < math.Sqrt(2)+0.1 {
             keep = append(keep, line)
         }
@@ -170,64 +170,57 @@ func MakeTraditional(n int) *Board {
 func (board *Board) Clone() *Board {
     points := make([]Point, len(board.Points))
     copy(points, board.Points)
-    lines := make([]Line, len(board.Lines))
-    for i,line := range board.Lines {
-        ps := make([]*Point, len(line.Points))
-        for j,p := range line.Points {
-            ps[j] = &points[p.Id]
-        }
-        lines[i] = Line{line.M, ps}
-    }
-    return &Board{
+    b := &Board{
         Points: points,
-        Lines: lines,
+        Lines: board.Lines,
         Turn: board.Turn,
     }
+    return b
 }
     
-func CaptureBackwards(points []*Point, i int, me int, capture bool) bool {
+func (board *Board) CaptureBackwards(ids []int, i int, me int, capture bool) bool {
     if i < 0 {
         return false
     }
     if capture {
-        points[i+1].Player = me
+        board.Points[ids[i+1]].Player = me
     }
-    if points[i].Player != 1-me {
+    if board.Points[ids[i]].Player != 1-me {
         return false
     }
     for ii := i; ii >= 0; ii-- {
-        if points[ii].Player == -1 {
+        if board.Points[ids[ii]].Player == -1 {
             return false
         }
-        if points[ii].Player == me {
+        if board.Points[ids[ii]].Player == me {
             return true
         }
         if capture {
-            points[ii].Player = me
+            board.Points[ids[ii]].Player = me
         }
     }
     return false
 }
     
-func CaptureForwards(points []*Point, i int, me int, capture bool) bool {
-    if i >= len(points) {
+func (board *Board) CaptureForwards(ids []int, i int, me int, capture bool) bool {
+    if i >= len(ids) {
         return false
     }
     if capture {
-        points[i-1].Player = me
+        board.Points[ids[i-1]].Player = me
     }
-    if points[i].Player != 1-me {
+    if board.Points[ids[i]].Player != 1-me {
         return false
     }
-    for ii := i; ii < len(points); ii++ {
-        if points[ii].Player == -1 {
+    for ii := i; ii < len(ids); ii++ {
+        if board.Points[ids[ii]].Player == -1 {
             return false
         }
-        if points[ii].Player == me {
+        if board.Points[ids[ii]].Player == me {
             return true
         }
         if capture {
-            points[ii].Player = me
+            board.Points[ids[ii]].Player = me
         }
     }
     return false
@@ -239,13 +232,13 @@ func (board *Board) GetPossibleMoves() []int {
     me := board.Turn % 2
     moves := []int{}
     for _,line := range board.Lines {
-        for i,p := range line.Points {
-            if p.Player != -1 {
+        for i,pId := range line.Ids {
+            if board.Points[pId].Player != -1 {
                 continue
             }
-            if CaptureBackwards(line.Points, i-1, me, false) || 
-                CaptureForwards(line.Points, i+1, me, false) {
-                moves = append(moves, p.Id)
+            if board.CaptureBackwards(line.Ids, i-1, me, false) || 
+                board.CaptureForwards(line.Ids, i+1, me, false) {
+                moves = append(moves, pId)
             }
         }
     }
@@ -293,25 +286,18 @@ func (board *Board) MoveIsLegal(to int) bool {
 
 func (board *Board) Premove(to int, me int) {
     board.Points[to].Player = me
-    for _,line := range board.Lines {
-        for i,p := range line.Points {
-            if p.Id == to {
-                line.Points[i].Player = me
-            }
-        }
-    }
 }
 
 func (board *Board) MakeMove(to int) {
     me := board.Turn % 2
     for _,line := range board.Lines {
-        for i,p := range line.Points {
-            if p.Id == to {
-                if CaptureBackwards(line.Points, i-1, me, false) {
-                    CaptureBackwards(line.Points, i-1, me, true)
+        for i,pId := range line.Ids {
+            if pId == to {
+                if board.CaptureBackwards(line.Ids, i-1, me, false) {
+                    board.CaptureBackwards(line.Ids, i-1, me, true)
                 }
-                if CaptureForwards(line.Points, i+1, me, false) {
-                    CaptureForwards(line.Points, i+1, me, true)
+                if board.CaptureForwards(line.Ids, i+1, me, false) {
+                    board.CaptureForwards(line.Ids, i+1, me, true)
                 }
             }
         }
@@ -357,8 +343,8 @@ func (board *Board) PrintTraditional() {
 
 func (board *Board) PrintLines() {
     for _,line := range board.Lines {
-        for _,p := range line.Points {
-            fmt.Print(p.Id, ": ", p.Player, " ,")
+        for _,pId := range line.Ids {
+            fmt.Print(pId, ": ", board.Points[pId].Player, " ,")
         }
         fmt.Println()
     }

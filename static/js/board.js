@@ -356,6 +356,7 @@ class Board {
     
     hover(x, y) {
         const hp = new Point(x, y);
+        let hovp = null;
         this.points.forEach(p => {
             if (p.player) {
                 p.hover = false;
@@ -364,7 +365,11 @@ class Board {
             const d = dist(hp, p);
             const h = d < EDGE_LEN/2;
             p.hover = h;
+            if (h) {
+                hovp = p;
+            }
         });
+        return hovp;
     }
     
     click(x, y) {
