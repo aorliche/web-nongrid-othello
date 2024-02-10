@@ -27,6 +27,9 @@ func Loop(me int, board *Board, inChan chan bool, outChan chan bool, depth int, 
 
 // Set up iterative deepening
 func Search(board *Board, me int, depth int, timeMillis int) *Board {
+    if board.Turn % 2 != me {
+        return nil
+    }
     startTime := time.Now()
     var res *Board
     for d := 1; d < depth; d++ {

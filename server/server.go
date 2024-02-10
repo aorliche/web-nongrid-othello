@@ -19,6 +19,7 @@ type Game struct {
     Conns []*websocket.Conn
     RecvChan chan bool
     AIGame bool
+    GameOver bool
 }
 
 // Actions:
@@ -46,10 +47,10 @@ type Request struct {
 // ListBoards: BoardNames
 // LoadBoard: BoardPlan
 // ListGames: Keys
-// NewGame: Key, Points, LevalMoves
-// JoinGame: Key, BoardPlan, Points, LegalMoves
-// Move: Player, Points, LegalMoves
-// Concede: Player
+// NewGame: Key, Points, LevalMoves, GameOver
+// JoinGame: Key, BoardPlan, Points, LegalMoves, GameOver
+// Move: Player, Points, LegalMoves, GameOver
+// Concede: Player, GameOver
 // Chat: Player, Text
 type Reply struct {
     Key int
@@ -60,6 +61,8 @@ type Reply struct {
     BoardNames []string
     Keys []int
     LegalMoves []int
+    GameOver bool
+    Text string
 }
 
 var games = make(map[int]*Game)
@@ -116,14 +119,16 @@ func GameLoop(game *Game, recvChan chan bool, sendChan chan bool) {
             break
         }
         // Pinged by user or computer move
-        // Now board should have benn updated
+        // Now board should have been updated
         keepPlaying := <- recvChan
         if !keepPlaying {
             sendChan <- false
             break
         }
         player := prev.Turn % 2
-        reply := Reply{Action: "Move", Player: player, Points: board.Points, LegalMoves: board.GetPossibleMoves()}
+        moves := board.GetPossibleMoves()
+        game.GameOver = len(moves) == 0
+        reply := Reply{Action: "Move", Player: player, Points: board.Points, LegalMoves: moves, GameOver: game.GameOver}
         jsn, _ := json.Marshal(reply)
         err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
         if err != nil {
@@ -190,7 +195,7 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             for key,game := range games {
                 // Check if game has not been joined by two players
                 // and is not an AI game
-                if len(game.Conns) < 2 && !game.AIGame {
+                if len(game.Conns) < 2 && !game.AIGame && !game.GameOver {
                     keys = append(keys, key)
                 }
             }
@@ -230,7 +235,9 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 go ai.Loop(1, game.Board, sendChan, recvChan, 10, 2000)
                 go GameLoop(game, recvChan, sendChan)
             }
-            reply := Reply{Action: "NewGame", Key: key, Points: board.Points, LegalMoves: board.GetPossibleMoves()}
+            moves := board.GetPossibleMoves()
+            game.GameOver = len(moves) == 0
+            reply := Reply{Action: "NewGame", Key: key, Points: board.Points, LegalMoves: moves, GameOver: game.GameOver}
             jsn, _ := json.Marshal(reply)
             err = conn.WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -245,14 +252,17 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 log.Println("Game not found")
                 continue
             }
+            if game.GameOver {
+                log.Println("Game is over")
+                continue
+            }
             game.Conns = append(game.Conns, conn)
-            var moves []int
-            if game.Board.Turn > 0 {
-                moves = game.Board.GetPossibleMoves()
-            } else {
+            moves := game.Board.GetPossibleMoves()
+            gameOver := len(moves) == 0
+            if game.Board.Turn == 0 {
                 moves = make([]int, 0)
             }
-            reply := Reply{Action: "JoinGame", Key: key, BoardPlan: game.BoardPlan, Points: game.Board.Points, LegalMoves: moves}
+            reply := Reply{Action: "JoinGame", Key: key, BoardPlan: game.BoardPlan, Points: game.Board.Points, LegalMoves: moves, GameOver: gameOver}
             jsn, _ := json.Marshal(reply)
             err := conn.WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -264,13 +274,19 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             key := req.Key
             move := req.Move
             game := games[key]
+            if game.GameOver {
+                log.Println("Game is over")
+                continue
+            }
             // Check if the move is legal and make the move
             if !game.Board.MoveIsLegal(move) {
                 log.Println("Illegal move")
                 continue
             }
             game.Board.MakeMove(move)
-            reply := Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: make([]int, 0)}
+            moves := game.Board.GetPossibleMoves()
+            game.GameOver = len(moves) == 0
+            reply := Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: make([]int, 0), GameOver: game.GameOver}
             jsn, _ := json.Marshal(reply)
             err := game.Conns[player].WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -278,9 +294,13 @@ func Socket(w http.ResponseWriter, r *http.Request) {
                 continue
             }
             if game.AIGame {
-                game.RecvChan <- true
+                if game.GameOver {
+                    game.RecvChan <- false
+                } else {
+                    game.RecvChan <- true
+                }
             } else if len(game.Conns) == 2 {
-                reply = Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: game.Board.GetPossibleMoves()}
+                reply = Reply{Action: "Move", Player: player, Points: game.Board.Points, LegalMoves: moves, GameOver: game.GameOver}
                 jsn, _ = json.Marshal(reply)
                 err = game.Conns[1-player].WriteMessage(websocket.TextMessage, jsn)
                 if err != nil {
@@ -292,7 +312,8 @@ func Socket(w http.ResponseWriter, r *http.Request) {
         case "Concede":
             key := req.Key
             game := games[key]
-            reply := Reply{Action: "Concede", Player: player}
+            game.GameOver = true
+            reply := Reply{Action: "Concede", Player: player, GameOver: true}
             jsn, _ := json.Marshal(reply)
             err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
             if err != nil {
@@ -302,6 +323,25 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             if game.AIGame {
                 game.RecvChan <- false
             } else if len(game.Conns) == 2 {
+                err = game.Conns[1].WriteMessage(websocket.TextMessage, jsn)
+                if err != nil {
+                    log.Println(err)
+                    continue
+                }
+            }
+        // Chat
+        case "Chat":
+            key := req.Key
+            text := req.Text
+            game := games[key]
+            reply := Reply{Action: "Chat", Player: player, Text: text}
+            jsn, _ := json.Marshal(reply)
+            err := game.Conns[0].WriteMessage(websocket.TextMessage, jsn)
+            if err != nil {
+                log.Println(err)
+                continue
+            }
+            if len(game.Conns) == 2 {
                 err = game.Conns[1].WriteMessage(websocket.TextMessage, jsn)
                 if err != nil {
                     log.Println(err)

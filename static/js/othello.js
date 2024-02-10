@@ -105,6 +105,7 @@ window.addEventListener('load', () => {
     const conn = new WebSocket(`ws://${location.host}/ws`);
     
     conn.onmessage = e => {
+        let gameOver = false;
         const json = JSON.parse(e.data);
         switch (json.Action) {
             case 'ListBoards':
@@ -167,9 +168,9 @@ window.addEventListener('load', () => {
                 me = 0;
                 displayScores(board);
                 legalMoves = json.LegalMoves;
+                gameOver = json.GameOver;
                 break;
             case 'Move':
-                console.log(json);
                 const player = json.Player;
                 const points = json.Points;
                 legalMoves = json.LegalMoves;
@@ -183,6 +184,7 @@ window.addEventListener('load', () => {
                 board.player = player == 0 ? "white" : "black";
                 board.repaint();
                 displayScores(board);
+                gameOver = json.GameOver;
                 break;
             case 'JoinGame': {
                 key = json.Key; 
@@ -200,8 +202,46 @@ window.addEventListener('load', () => {
                 board.player = getNumPieces(board) % 2 == 0 ? "black" : "white";
                 board.repaint();
                 displayScores(board);
+                gameOver = json.GameOver;
                 break;
             }
+            case 'Concede': {
+                const player = json.Player;
+                gameOver = false;
+                if (player == 0) {
+                    drawText(board.canvas.getContext('2d'), 
+                        "Black concedes - white wins!", 
+                        new Point(canvas.width/2, 40),
+                        'red', 
+                        'bold 28px sans', 
+                        true);
+                } else {
+                    drawText(board.canvas.getContext('2d'), 
+                        "White concedes - black wins!", 
+                        new Point(canvas.width/2, 40),
+                        'red', 
+                        'bold 28px sans', 
+                        true);
+                }
+                // Disables mousemove and click events
+                board = null;
+                break;
+            }
+            case 'Chat': {
+                const p = json.Player == 0 ? 'Black' : 'White';
+                $('#chat').value += `${p}: ${json.Text}\n`;
+                $('#chat').scrollTop = $('#chat').scrollHeight;
+                break;
+            }
+        }
+        if (gameOver) {
+            const [bscore, wscore] = getScores(board);
+            const canvas = $('#canvas');
+            const ctx = canvas.getContext('2d');
+            drawText(ctx, 'Game over - no more legal moves!', new Point(canvas.width/2, 250), 'red', 'bold 48px sans', true);
+            drawText(ctx, `Black: ${bscore}`, new Point(canvas.width/2, 300), 'red', 'bold 48px sans', true);
+            drawText(ctx, `White: ${wscore}`, new Point(canvas.width/2, 350), 'red', 'bold 48px sans', true);
+            board = null;
         }
     }
     
@@ -278,6 +318,14 @@ window.addEventListener('load', () => {
         $('#new').disabled = true;
         $('#new-ai').disabled = true;
     });
+    
+    $('#new-ai').addEventListener('click', () => {
+        const pts = transformPoints(board);
+        const req = {Action: 'NewGame', AIGame: true, BoardName: boardName, Points: pts};
+        conn.send(JSON.stringify(req));
+        $('#new').disabled = true;
+        $('#new-ai').disabled = true;
+    });
 
     $('#join').addEventListener('click', () => {
         const idx = $('select[name="games-list"]').selectedIndex;
@@ -287,4 +335,22 @@ window.addEventListener('load', () => {
         conn.send(JSON.stringify(req));
     });
 
+    $('#concede').addEventListener('click', () => {
+        if (!board || (!key && key !== 0)) return;
+        conn.send(JSON.stringify({Action: 'Concede', Key: key}));
+    });
+
+    function sendMessage() {
+        if (!key && key !== 0) return;
+        conn.send(JSON.stringify({Key: key, Action: 'Chat', Text: $('#message').value}));
+        $('#message').value = '';
+    }
+
+    $('#message').addEventListener('keyup', (e) => {
+        if (e.key == 'Enter' || e.keyCode == 13) {
+            sendMessage();
+        }
+    });
+
+    $('#send').addEventListener('click', sendMessage);
 });
