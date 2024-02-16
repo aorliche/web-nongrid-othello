@@ -13,6 +13,10 @@ type Point struct {
     Player int
 }
 
+type Triangle struct {
+    Ids [3]int
+}
+
 type Line struct {
     M float64
     Ids []int
@@ -20,6 +24,8 @@ type Line struct {
 
 type Board struct {
     Points []Point
+    Neighbors [][]int
+    Triangles []Triangle
     Lines []Line
     Turn int
 }
@@ -64,6 +70,211 @@ func ApproxEq(a float64, b float64) bool {
 
 func Slope(p1 Point, p2 Point) float64 {
     return (p2.Y - p1.Y) / (p2.X - p1.X)
+}
+
+// Return index of keystone point in triangle or -1 if not continues
+// A triangle joins two lines that have different keystone points
+func (board *Board) TriangleContinuesLine(tId int, line Line) int {
+    d := (1+math.Sqrt(3)/2)*Distance(board.Points[line.Ids[0]], board.Points[line.Ids[1]])
+    id0 := line.Ids[0]
+    ide := line.Ids[len(line.Ids)-1]
+    tri := board.Triangles[tId]
+    if id0 == tri.Ids[0] {
+        p := board.Points[line.Ids[1]]
+        p1 := board.Points[tri.Ids[1]]
+        p2 := board.Points[tri.Ids[2]]
+        pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
+        if ApproxEq(Distance(pm, p), d) {
+            return 0
+        }
+    } else if id0 == tri.Ids[1] {
+        p := board.Points[line.Ids[1]]
+        p1 := board.Points[tri.Ids[0]]
+        p2 := board.Points[tri.Ids[2]]
+        pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
+        if ApproxEq(Distance(pm, p), d) {
+            return 1
+        }
+    } else if id0 == tri.Ids[2] {
+        p := board.Points[line.Ids[1]]
+        p1 := board.Points[tri.Ids[0]]
+        p2 := board.Points[tri.Ids[1]]
+        pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
+        if ApproxEq(Distance(pm, p), d) {
+            return 2
+        }
+    } else if ide == tri.Ids[0] {
+        p := board.Points[line.Ids[len(line.Ids)-2]]
+        p1 := board.Points[tri.Ids[1]]
+        p2 := board.Points[tri.Ids[2]]
+        pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
+        if ApproxEq(Distance(pm, p), d) {
+            return 0
+        }
+    } else if ide == tri.Ids[1] {
+        p := board.Points[line.Ids[len(line.Ids)-2]]
+        p1 := board.Points[tri.Ids[0]]
+        p2 := board.Points[tri.Ids[2]]
+        pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
+        if ApproxEq(Distance(pm, p), d) {
+            return 1
+        }
+    } else if ide == tri.Ids[2] {
+        p := board.Points[line.Ids[len(line.Ids)-2]]
+        p1 := board.Points[tri.Ids[0]]
+        p2 := board.Points[tri.Ids[1]]
+        pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
+        if ApproxEq(Distance(pm, p), d) {
+            return 2
+        }
+    } 
+    return -1
+}
+
+func (board *Board) CalculateTriangles() {
+    inTriangles := func(ts []Triangle, p1 int, p2 int, p3 int) bool {
+        for _,t := range ts {
+            if Includes(t.Ids[:], p1) && Includes(t.Ids[:], p2) && Includes(t.Ids[:], p3) {
+                return true
+            }
+        }
+        return false
+    }
+    board.Triangles = make([]Triangle, 0)
+    for p1,ns := range board.Neighbors {
+        outer:
+        for _,p2 := range ns {
+            for _,p3a := range board.Neighbors[p2] {
+                for _,p3b := range ns {
+                    if p3a == p3b && !inTriangles(board.Triangles, p1, p2, p3a) {
+                        board.Triangles = append(board.Triangles, Triangle{[3]int{p1, p2, p3a}})
+                        continue outer
+                    }
+                }
+            }
+        }
+    }
+}
+
+// Slope becomes incorrect
+func (board *Board) ExtendLines() {
+    board.CalculateTriangles()
+    // tId, lineId, keypoint
+    extendsTrips := make([][3]int, 0)
+    extendsTris := make([]int, 0)
+    for tId := range board.Triangles {
+        for i,line := range board.Lines {
+            j := board.TriangleContinuesLine(tId, line)
+            if j != -1 {
+                extendsTrips = append(extendsTrips, [3]int{tId, i, j})
+                if !Includes(extendsTris, tId) {
+                    extendsTris = append(extendsTris, tId)
+                }
+            }
+        }
+    }
+    extendedLines := make([]Line, 0)
+    linesExtended := make([]bool, len(board.Lines))
+    for _,t := range extendsTris {
+        lineIds := make([]int, 0)
+        keypoints := make([]int, 0)
+        for _,p := range extendsTrips {
+            if p[0] == t {
+                linesExtended[p[1]] = true
+                lineIds = append(lineIds, p[1])
+                keypoints = append(keypoints, p[2])
+            }
+        }
+        for i := 0; i < len(lineIds); i++ {
+            joined := false
+            for j := i+1; j < len(lineIds); j++ {
+               if keypoints[i] != keypoints[j] {
+                   joined = true
+                   // Get the proper joining for lines
+                   l1 := board.Lines[lineIds[i]]
+                   l2 := board.Lines[lineIds[j]]
+                   id1 := board.Triangles[t].Ids[keypoints[i]]
+                   id2 := board.Triangles[t].Ids[keypoints[j]]
+                   nIds := make([]int, len(l1.Ids)+len(l2.Ids))
+                   if l1.Ids[0] == id1 && l2.Ids[0] == id2 {
+                       for k := 0; k < len(l1.Ids); k++ {
+                           nIds[k] = l1.Ids[len(l1.Ids)-1-k]
+                       }
+                       for k := 0; k < len(l2.Ids); k++ {
+                           nIds[len(l1.Ids)+k] = l2.Ids[k]
+                       }
+                   } else if l1.Ids[0] == id1 && l2.Ids[len(l2.Ids)-1] == id2 {
+                       for k := 0; k < len(l1.Ids); k++ {
+                           nIds[k] = l1.Ids[len(l1.Ids)-1-k]
+                       }
+                       for k := 0; k < len(l2.Ids); k++ {
+                           nIds[len(l1.Ids)+k] = l2.Ids[len(l2.Ids)-1-k]
+                       }
+                   } else if l1.Ids[len(l1.Ids)-1] == id1 && l2.Ids[0] == id2 {
+                       for k := 0; k < len(l1.Ids); k++ {
+                           nIds[k] = l1.Ids[k]
+                       }
+                       for k := 0; k < len(l2.Ids); k++ {
+                           nIds[len(l1.Ids)+k] = l2.Ids[k]
+                       }
+                   } else if l1.Ids[len(l1.Ids)-1] == id1 && l2.Ids[len(l2.Ids)-1] == id2 {
+                       for k := 0; k < len(l1.Ids); k++ {
+                           nIds[k] = l1.Ids[k]
+                       }
+                       for k := 0; k < len(l2.Ids); k++ {
+                           nIds[len(l1.Ids)+k] = l2.Ids[len(l2.Ids)-1-k]
+                       }
+                   }
+                   nl := Line{l1.M, nIds}
+                   extendedLines = append(extendedLines, nl)
+               }
+            }
+            // Add the other two triangle points if no joins
+            // Need to duplicate the line
+            if !joined {
+                l1 := board.Lines[lineIds[i]]
+                id1 := board.Triangles[t].Ids[keypoints[i]]
+                nl1 := make([]int, 0)
+                nl2 := make([]int, 0)
+                var app1, app2 int
+                switch keypoints[i] {
+                    case 0: {
+                        app1 = board.Triangles[t].Ids[1]
+                        app2 = board.Triangles[t].Ids[2]
+                    }
+                    case 1: {
+                        app1 = board.Triangles[t].Ids[0]
+                        app2 = board.Triangles[t].Ids[2]
+                    }
+                    case 2: {
+                        app1 = board.Triangles[t].Ids[0]
+                        app2 = board.Triangles[t].Ids[1]
+                    }
+                }
+                if l1.Ids[0] == id1 {
+                    nl1 = append(nl1, app1)
+                    nl2 = append(nl2, app2)
+                    nl1 = append(nl1, l1.Ids...)
+                    nl2 = append(nl2, l1.Ids...)
+                } else {
+                    nl1 = append(nl1, l1.Ids...)
+                    nl2 = append(nl2, l1.Ids...)
+                    nl1 = append(nl1, board.Triangles[t].Ids[1])
+                    nl2 = append(nl2, board.Triangles[t].Ids[2])
+                }
+                extendedLines = append(extendedLines, Line{l1.M, nl1})
+                extendedLines = append(extendedLines, Line{l1.M, nl2})
+            }
+        }
+    }
+    // Add in the non-extended lines
+    for i,line := range board.Lines {
+        if !linesExtended[i] {
+            extendedLines = append(extendedLines, line)
+        }
+    }
+    board.Lines = extendedLines
+    board.CullShortLines()
 }
 
 func (line Line) Includes(p Point) bool {
@@ -132,14 +343,18 @@ func PointsToLines(points []Point) []Line {
             return dy < 0
         })
     }
-    // Cull lines with only two points
+    return lines
+}
+
+// Cull lines with only two points
+func (board *Board) CullShortLines() {
     keep := make([]Line, 0)
-    for _,line := range lines {
+    for _,line := range board.Lines {
         if len(line.Ids) > 2 {
             keep = append(keep, line)
         }
     }
-    return keep
+    board.Lines = keep
 }
 
 func (board *Board) CullLongIntervalLines(cutoff float64) {
@@ -171,13 +386,17 @@ func MakeTraditional(n int) *Board {
             keep = append(keep, line)
         }
     }
-    return &Board{
+    b := &Board{
         Points: points,
         Lines: keep,
         Turn: 0,
     }
+    // Cull length-2 lines
+    b.CullShortLines()
+    return b
 }
 
+// We ignore neighbors and triangles
 func (board *Board) Clone() *Board {
     points := make([]Point, len(board.Points))
     copy(points, board.Points)
@@ -301,17 +520,27 @@ func (board *Board) Premove(to int, me int) {
 
 func (board *Board) MakeMove(to int) {
     me := board.Turn % 2
-    for _,line := range board.Lines {
+    // Now that lines have bifurcations we can longer check for legality and capture
+    // in the same loop
+    bwd := make([][2]int, 0)
+    fwd := make([][2]int, 0)
+    for j,line := range board.Lines {
         for i,pId := range line.Ids {
             if pId == to {
                 if board.CaptureBackwards(line.Ids, i-1, me, false) {
-                    board.CaptureBackwards(line.Ids, i-1, me, true)
+                    bwd = append(bwd, [2]int{j, i})
                 }
                 if board.CaptureForwards(line.Ids, i+1, me, false) {
-                    board.CaptureForwards(line.Ids, i+1, me, true)
+                    fwd = append(fwd, [2]int{j, i})
                 }
             }
         }
+    }
+    for _,lp := range bwd {
+        board.CaptureBackwards(board.Lines[lp[0]].Ids, lp[1]-1, me, true)
+    }
+    for _,lp := range fwd {
+        board.CaptureForwards(board.Lines[lp[0]].Ids, lp[1]+1, me, true)
     }
     board.Turn += 1
 }

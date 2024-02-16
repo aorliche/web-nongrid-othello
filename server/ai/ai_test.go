@@ -2,6 +2,7 @@ package ai
 
 import (
     "fmt"
+    "math"
     "testing"
 )
 
@@ -99,3 +100,122 @@ func TestGetCandidates2(t *testing.T) {
     }
 }
 
+func TestCalculateTriangles(t *testing.T) {
+    ps := []Point{
+        Point{0,0,0,-1},
+        Point{0.5,math.Sqrt(3)/2,1,-1},
+        Point{0.5,-math.Sqrt(3)/2,2,-1},
+    }
+    ns := [][]int{
+        []int{1,2},
+        []int{0,2},
+        []int{0,1},
+    }
+    board := &Board{
+        Points: ps,
+        Neighbors: ns,
+        Turn: 0,
+    }
+    board.CalculateTriangles()
+    if len(board.Triangles) != 1 {
+        t.Errorf("got %v, expect %v", len(board.Triangles), 1)
+    }
+    ids := board.Triangles[0].Ids
+    if !Includes(ids[:], 0) || !Includes(ids[:], 1) || !Includes(ids[:], 2) {
+        t.Errorf("got %v, expect %v", ids, []int{0,1,2})
+    }
+}
+
+func TestCalculateTriangles2(t *testing.T) {
+    ns := [][]int{
+        []int{1,2,3},
+        []int{0,2,4},
+        []int{0,1},
+        []int{0,5},
+        []int{1},
+        []int{6,7},
+        []int{5,7},
+        []int{5,6},
+    }
+    board := &Board{
+        Neighbors: ns,
+        Turn: 0,
+    }
+    board.CalculateTriangles()
+    if len(board.Triangles) != 2 {
+        t.Errorf("got %v, expect %v", len(board.Triangles), 2)
+    }
+    ids0 := board.Triangles[0].Ids
+    ids1 := board.Triangles[1].Ids
+    if !Includes(ids0[:], 0) || !Includes(ids0[:], 1) || !Includes(ids0[:], 2) {
+        t.Errorf("got %v, expect %v", ids0, []int{0,1,2})
+    }
+    if !Includes(ids1[:], 5) || !Includes(ids1[:], 6) || !Includes(ids1[:], 7) {
+        t.Errorf("got %v, expect %v", ids1, []int{5,6,7})
+    }
+}
+
+func TestCalculateTriangles3(t *testing.T) {
+    ns := [][]int{
+        []int{1,2,3},
+        []int{0,2},
+        []int{0,1,3},
+        []int{0,2},
+    }
+    board := &Board{
+        Neighbors: ns,
+        Turn: 0,
+    }
+    board.CalculateTriangles()
+    if len(board.Triangles) != 2 {
+        t.Errorf("got %v, expect %v", len(board.Triangles), 2)
+    }
+    ids0 := board.Triangles[0].Ids
+    ids1 := board.Triangles[1].Ids
+    if !Includes(ids0[:], 0) || !Includes(ids0[:], 1) || !Includes(ids0[:], 2) {
+        t.Errorf("got %v, expect %v", ids0, []int{0,1,2})
+    }
+    if !Includes(ids1[:], 0) || !Includes(ids1[:], 2) || !Includes(ids1[:], 3) {
+        t.Errorf("got %v, expect %v", ids1, []int{0,2,3})
+    }
+}
+
+func TestExtendLines(t *testing.T) {
+    ps := []Point{
+        Point{0,0,0,-1},
+        Point{math.Sqrt(3)/2,0.5,1,-1},
+        Point{math.Sqrt(3)/2,-0.5,2,-1},
+        Point{-1,0,3,-1},
+        Point{-1-math.Sqrt(3)/2,0.5,4,-1},
+        Point{-1-math.Sqrt(3)/2,-0.5,5,-1},
+    }
+    ns := [][]int{
+        []int{1,2,3},
+        []int{0,2},
+        []int{0,1},
+        []int{0,4,5},
+        []int{3,5},
+        []int{3,4},
+    }
+    board := &Board{
+        Points: ps,
+        Neighbors: ns,
+        Turn: 0,
+    }
+    board.CalculateTriangles()
+    if len(board.Triangles) != 2 {
+        t.Errorf("got %v, expect %v", len(board.Triangles), 2)
+    }
+    board.Lines = PointsToLines(board.Points)
+    board.CullLongIntervalLines(1.1)
+    if len(board.Lines) != 7 {
+        t.Errorf("got %v, expect %v", len(board.Lines), 7)
+        t.Errorf("%v", board.Lines)
+    }
+    board.ExtendLines()
+    if len(board.Lines) != 4 {
+        t.Errorf("got %v, expect %v", len(board.Lines), 10)
+        t.Errorf("%v", board.Lines)
+    }
+    fmt.Println(board.Lines)
+}
