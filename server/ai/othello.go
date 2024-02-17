@@ -28,6 +28,12 @@ const (
     NodeTriangle 
 )
 
+type BoardError string
+
+func (e BoardError) Error() string {
+    return string(e)
+}
+
 type Node struct {
     Type int
     Neighbors []int
@@ -38,8 +44,6 @@ type Node struct {
 
 type Board struct {
     Points []Point
-    Neighbors [][]int
-    Triangles []Triangle
     Lines []Line
     Turn int
 }
@@ -84,6 +88,21 @@ func ApproxEq(a float64, b float64) bool {
 
 func Slope(p1 Point, p2 Point) float64 {
     return (p2.Y - p1.Y) / (p2.X - p1.X)
+}
+    
+func (line Line) Includes(p Point) bool {
+    for _,pId := range line.Ids {
+        if pId == p.Id {
+            return true
+        }
+    }
+    return false
+}
+
+func Distance(p1 Point, p2 Point) float64 {
+    dx := p1.X - p2.X
+    dy := p1.Y - p2.Y
+    return math.Sqrt(dx*dx + dy*dy)
 }
 
 func GetPathsToNode(nodes []*Node, cur []int, end int, result *[][]int) {
@@ -186,7 +205,7 @@ func PathsToLines(nodes []*Node, lines []Line, tris []Triangle, paths [][]int) (
         // Must be line
         if len(path) == 1 {
             if nodes[path[0]].Type != NodeLine {
-                return nil, errors.New("Isolated node not a line")
+                return nil, BoardError("Isolated node not a line")
             }
             result = append(result, lines[nodes[path[0]].LineId])
         // Error
@@ -195,7 +214,7 @@ func PathsToLines(nodes []*Node, lines []Line, tris []Triangle, paths [][]int) (
         // Must be triangle, can ignore
         } else if len(path) == 2 {
             if nodes[path[0]].Type != NodeTriangle || nodes[path[1]].Type != NodeTriangle {
-                return nil, errors.New("Invalid path: length 2 path not two triangle vertices")
+                return nil, BoardError("Invalid path: length 2 path not two triangle vertices")
             }
         // Lines and triangles
         } else {
@@ -220,7 +239,7 @@ func PathsToLines(nodes []*Node, lines []Line, tris []Triangle, paths [][]int) (
                             Reverse(line)
                             res = append(res, line[1:]...)
                         } else {
-                            return nil, errors.New("Invalid path: line doesn't add properly")
+                            return nil, BoardError("Invalid path: line doesn't add properly")
                         }
                     }
                 } else if n.Type == NodeTriangle {
@@ -235,7 +254,7 @@ func PathsToLines(nodes []*Node, lines []Line, tris []Triangle, paths [][]int) (
                     } else if res[len(res)-1] == trip {
                         // Do nothing
                     } else {
-                        return nil, errors.New("Invalid path: triangle in middle of line")
+                        return nil, BoardError("Invalid path: triangle in middle of line")
                     }
                 }
             }
@@ -327,21 +346,6 @@ func CalculateTriangles(neighbors [][]int) []Triangle {
         }
     }
     return tris
-}
-    
-func (line Line) Includes(p Point) bool {
-    for _,pId := range line.Ids {
-        if pId == p.Id {
-            return true
-        }
-    }
-    return false
-}
-
-func Distance(p1 Point, p2 Point) float64 {
-    dx := p1.X - p2.X
-    dy := p1.Y - p2.Y
-    return math.Sqrt(dx*dx + dy*dy)
 }
 
 func PointsToLines(points []Point, d float64) []Line {
@@ -461,7 +465,6 @@ func MakeTraditional(n int) *Board {
     }
 }
 
-// We ignore neighbors and triangles
 func (board *Board) Clone() *Board {
     points := make([]Point, len(board.Points))
     copy(points, board.Points)
