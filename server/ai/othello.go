@@ -1,6 +1,7 @@
 package ai
 
 import (
+    "errors"
     "fmt"
     "math"
     "sort"
@@ -20,6 +21,19 @@ type Triangle struct {
 type Line struct {
     M float64
     Ids []int
+}
+
+const (
+    NodeLine int = iota
+    NodeTriangle 
+)
+
+type Node struct {
+    Type int
+    Neighbors []int
+    LineId int
+    TriangleId int
+    TrianglePointId int
 }
 
 type Board struct {
@@ -72,57 +86,215 @@ func Slope(p1 Point, p2 Point) float64 {
     return (p2.Y - p1.Y) / (p2.X - p1.X)
 }
 
+func GetPathsToNode(nodes []*Node, cur []int, end int, result *[][]int) {
+    // No 3-triangle sections
+    if len(cur) >= 3 {
+        if nodes[cur[len(cur)-1]].Type == NodeTriangle && 
+        nodes[cur[len(cur)-2]].Type == NodeTriangle &&
+        nodes[cur[len(cur)-3]].Type == NodeTriangle {
+            return
+        }
+    }
+    // Reached the end
+    if cur[len(cur)-1] == end {
+        // Can't have all-triangle paths
+        allTris := true
+        for _, nid := range cur {
+            if nodes[nid].Type != NodeTriangle {
+                allTris = false
+                break
+            }
+        }
+        if allTris {
+            return
+        }
+        *result = append(*result, cur)
+        return
+    }
+    last := nodes[cur[len(cur)-1]]
+    ns := last.Neighbors
+    for _, id := range ns {
+        // No loops
+        if Includes(cur, id) {
+            continue
+        // Continue branching
+        } 
+        next := make([]int, len(cur)+1)
+        copy(next, cur)
+        next[len(cur)] = id
+        GetPathsToNode(nodes, next, end, result)
+    }
+}
+
+func GetGraphPaths(nodes []*Node) [][]int {
+    result := [][]int{}
+    // Get endpoints
+    ends := make([]int, 0)
+    for i, n := range nodes {
+        if n.Type == NodeLine && len(n.Neighbors) == 1 {
+            ends = append(ends, i)
+        } else if n.Type == NodeLine && len(n.Neighbors) == 0 {
+            result = append(result, []int{i})
+        } else if n.Type == NodeTriangle && len(n.Neighbors) == 2 {
+            ends = append(ends, i)
+        }
+    }
+    // Make path between every pair of endpoints
+    // May have multiple paths if graph contains loops
+    // This should also fix a line is a loop problem?
+    for i := 0; i < len(ends); i++ {
+        for j := i+1; j < len(ends); j++ {
+            paths := [][]int{}
+            GetPathsToNode(nodes, []int{ends[i]}, ends[j], &paths)
+            result = append(result, paths...)
+        }
+    }
+    return result
+}
+
+func MakeGraph(points []Point, lines []Line, tris []Triangle) []*Node {
+    nodes := []*Node{}
+    for li := range lines {
+        nodes = append(nodes, &Node{Type: NodeLine, LineId: li})
+    }
+    for ti, tri := range tris {
+        nti := len(nodes)
+        nodes = append(nodes, &Node{Type: NodeTriangle, TriangleId: ti, TrianglePointId: 0, Neighbors: []int{nti+1, nti+2}})
+        nodes = append(nodes, &Node{Type: NodeTriangle, TriangleId: ti, TrianglePointId: 1, Neighbors: []int{nti, nti+2}})
+        nodes = append(nodes, &Node{Type: NodeTriangle, TriangleId: ti, TrianglePointId: 2, Neighbors: []int{nti, nti+1}})
+        for li, line := range lines {
+            nli := -1
+            for ni, node := range nodes {
+                if node.LineId == li {
+                    nli = ni
+                    break
+                }
+            }
+            tpi := TriangleContinuesLine(points, tri, line)
+            if tpi != -1 {
+                nodes[nti+tpi].Neighbors = append(nodes[nti+tpi].Neighbors, nli)
+                nodes[nli].Neighbors = append(nodes[nli].Neighbors, nti+tpi)
+            }
+        }
+    }
+    return nodes
+}
+
+func PathsToLines(nodes []*Node, lines []Line, tris []Triangle, paths [][]int) ([]Line, error) {
+    result := []Line{}
+    for _,path := range paths {
+        // Must be line
+        if len(path) == 1 {
+            if nodes[path[0]].Type != NodeLine {
+                return nil, errors.New("Isolated node not a line")
+            }
+            result = append(result, lines[nodes[path[0]].LineId])
+        // Error
+        } else if len(path) == 0 {
+            return nil, errors.New("Invalid path: empty")
+        // Must be triangle, can ignore
+        } else if len(path) == 2 {
+            if nodes[path[0]].Type != NodeTriangle || nodes[path[1]].Type != NodeTriangle {
+                return nil, errors.New("Invalid path: length 2 path not two triangle vertices")
+            }
+        // Lines and triangles
+        } else {
+            res := []int{}
+            for _,nid := range path {
+                n := nodes[nid]
+                if n.Type == NodeLine {
+                    if len(res) == 0 {
+                        res = append(res, lines[n.LineId].Ids...)
+                    } else {
+                        line := lines[n.LineId].Ids
+                        if res[0] == line[0] {
+                            Reverse(res)
+                            res = append(res, line[1:]...)
+                        } else if res[len(res)-1] == line[0] {
+                            res = append(res, line[1:]...)
+                        } else if res[0] == line[len(line)-1] {
+                            Reverse(res)
+                            Reverse(line)
+                            res = append(res, line[1:]...)
+                        } else if res[len(res)-1] == line[len(line)-1] {
+                            Reverse(line)
+                            res = append(res, line[1:]...)
+                        } else {
+                            return nil, errors.New("Invalid path: line doesn't add properly")
+                        }
+                    }
+                } else if n.Type == NodeTriangle {
+                    tri := tris[n.TriangleId]
+                    trip := tri.Ids[n.TrianglePointId]
+                    if len(res) == 0 {
+                        res = append(res, trip)
+                    } else if !Includes(res, trip) {
+                        res = append(res, trip)
+                    } else if res[0] == trip {
+                        Reverse(res)
+                    } else if res[len(res)-1] == trip {
+                        // Do nothing
+                    } else {
+                        return nil, errors.New("Invalid path: triangle in middle of line")
+                    }
+                }
+            }
+            result = append(result, Line{Ids: res})
+        }
+    }
+    return result, nil
+}
+
 // Return index of keystone point in triangle or -1 if not continues
 // A triangle joins two lines that have different keystone points
-func (board *Board) TriangleContinuesLine(tId int, line Line) int {
-    d := (1+math.Sqrt(3)/2)*Distance(board.Points[line.Ids[0]], board.Points[line.Ids[1]])
+func TriangleContinuesLine(points []Point, tri Triangle, line Line) int {
+    d := (1+math.Sqrt(3)/2)*Distance(points[line.Ids[0]], points[line.Ids[1]])
     id0 := line.Ids[0]
     ide := line.Ids[len(line.Ids)-1]
-    tri := board.Triangles[tId]
     if id0 == tri.Ids[0] {
-        p := board.Points[line.Ids[1]]
-        p1 := board.Points[tri.Ids[1]]
-        p2 := board.Points[tri.Ids[2]]
+        p := points[line.Ids[1]]
+        p1 := points[tri.Ids[1]]
+        p2 := points[tri.Ids[2]]
         pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
         if ApproxEq(Distance(pm, p), d) {
             return 0
         }
     } else if id0 == tri.Ids[1] {
-        p := board.Points[line.Ids[1]]
-        p1 := board.Points[tri.Ids[0]]
-        p2 := board.Points[tri.Ids[2]]
+        p := points[line.Ids[1]]
+        p1 := points[tri.Ids[0]]
+        p2 := points[tri.Ids[2]]
         pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
         if ApproxEq(Distance(pm, p), d) {
             return 1
         }
     } else if id0 == tri.Ids[2] {
-        p := board.Points[line.Ids[1]]
-        p1 := board.Points[tri.Ids[0]]
-        p2 := board.Points[tri.Ids[1]]
+        p := points[line.Ids[1]]
+        p1 := points[tri.Ids[0]]
+        p2 := points[tri.Ids[1]]
         pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
         if ApproxEq(Distance(pm, p), d) {
             return 2
         }
     } else if ide == tri.Ids[0] {
-        p := board.Points[line.Ids[len(line.Ids)-2]]
-        p1 := board.Points[tri.Ids[1]]
-        p2 := board.Points[tri.Ids[2]]
+        p := points[line.Ids[len(line.Ids)-2]]
+        p1 := points[tri.Ids[1]]
+        p2 := points[tri.Ids[2]]
         pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
         if ApproxEq(Distance(pm, p), d) {
             return 0
         }
     } else if ide == tri.Ids[1] {
-        p := board.Points[line.Ids[len(line.Ids)-2]]
-        p1 := board.Points[tri.Ids[0]]
-        p2 := board.Points[tri.Ids[2]]
+        p := points[line.Ids[len(line.Ids)-2]]
+        p1 := points[tri.Ids[0]]
+        p2 := points[tri.Ids[2]]
         pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
         if ApproxEq(Distance(pm, p), d) {
             return 1
         }
     } else if ide == tri.Ids[2] {
-        p := board.Points[line.Ids[len(line.Ids)-2]]
-        p1 := board.Points[tri.Ids[0]]
-        p2 := board.Points[tri.Ids[1]]
+        p := points[line.Ids[len(line.Ids)-2]]
+        p1 := points[tri.Ids[0]]
+        p2 := points[tri.Ids[1]]
         pm := Point{(p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2, -1, -1}
         if ApproxEq(Distance(pm, p), d) {
             return 2
@@ -131,7 +303,7 @@ func (board *Board) TriangleContinuesLine(tId int, line Line) int {
     return -1
 }
 
-func (board *Board) CalculateTriangles() {
+func CalculateTriangles(neighbors [][]int) []Triangle {
     inTriangles := func(ts []Triangle, p1 int, p2 int, p3 int) bool {
         for _,t := range ts {
             if Includes(t.Ids[:], p1) && Includes(t.Ids[:], p2) && Includes(t.Ids[:], p3) {
@@ -140,143 +312,23 @@ func (board *Board) CalculateTriangles() {
         }
         return false
     }
-    board.Triangles = make([]Triangle, 0)
-    for p1,ns := range board.Neighbors {
+    tris := make([]Triangle, 0)
+    for p1,ns := range neighbors {
         outer:
         for _,p2 := range ns {
-            for _,p3a := range board.Neighbors[p2] {
+            for _,p3a := range neighbors[p2] {
                 for _,p3b := range ns {
-                    if p3a == p3b && !inTriangles(board.Triangles, p1, p2, p3a) {
-                        board.Triangles = append(board.Triangles, Triangle{[3]int{p1, p2, p3a}})
+                    if p3a == p3b && !inTriangles(tris, p1, p2, p3a) {
+                        tris = append(tris, Triangle{[3]int{p1, p2, p3a}})
                         continue outer
                     }
                 }
             }
         }
     }
+    return tris
 }
-
-// Slope becomes incorrect
-func (board *Board) ExtendLines() {
-    board.CalculateTriangles()
-    // tId, lineId, keypoint
-    extendsTrips := make([][3]int, 0)
-    extendsTris := make([]int, 0)
-    for tId := range board.Triangles {
-        for i,line := range board.Lines {
-            j := board.TriangleContinuesLine(tId, line)
-            if j != -1 {
-                extendsTrips = append(extendsTrips, [3]int{tId, i, j})
-                if !Includes(extendsTris, tId) {
-                    extendsTris = append(extendsTris, tId)
-                }
-            }
-        }
-    }
-    extendedLines := make([]Line, 0)
-    linesExtended := make([]bool, len(board.Lines))
-    for _,t := range extendsTris {
-        lineIds := make([]int, 0)
-        keypoints := make([]int, 0)
-        for _,p := range extendsTrips {
-            if p[0] == t {
-                linesExtended[p[1]] = true
-                lineIds = append(lineIds, p[1])
-                keypoints = append(keypoints, p[2])
-            }
-        }
-        for i := 0; i < len(lineIds); i++ {
-            joined := false
-            for j := i+1; j < len(lineIds); j++ {
-               if keypoints[i] != keypoints[j] {
-                   joined = true
-                   // Get the proper joining for lines
-                   l1 := board.Lines[lineIds[i]]
-                   l2 := board.Lines[lineIds[j]]
-                   id1 := board.Triangles[t].Ids[keypoints[i]]
-                   id2 := board.Triangles[t].Ids[keypoints[j]]
-                   nIds := make([]int, len(l1.Ids)+len(l2.Ids))
-                   if l1.Ids[0] == id1 && l2.Ids[0] == id2 {
-                       for k := 0; k < len(l1.Ids); k++ {
-                           nIds[k] = l1.Ids[len(l1.Ids)-1-k]
-                       }
-                       for k := 0; k < len(l2.Ids); k++ {
-                           nIds[len(l1.Ids)+k] = l2.Ids[k]
-                       }
-                   } else if l1.Ids[0] == id1 && l2.Ids[len(l2.Ids)-1] == id2 {
-                       for k := 0; k < len(l1.Ids); k++ {
-                           nIds[k] = l1.Ids[len(l1.Ids)-1-k]
-                       }
-                       for k := 0; k < len(l2.Ids); k++ {
-                           nIds[len(l1.Ids)+k] = l2.Ids[len(l2.Ids)-1-k]
-                       }
-                   } else if l1.Ids[len(l1.Ids)-1] == id1 && l2.Ids[0] == id2 {
-                       for k := 0; k < len(l1.Ids); k++ {
-                           nIds[k] = l1.Ids[k]
-                       }
-                       for k := 0; k < len(l2.Ids); k++ {
-                           nIds[len(l1.Ids)+k] = l2.Ids[k]
-                       }
-                   } else if l1.Ids[len(l1.Ids)-1] == id1 && l2.Ids[len(l2.Ids)-1] == id2 {
-                       for k := 0; k < len(l1.Ids); k++ {
-                           nIds[k] = l1.Ids[k]
-                       }
-                       for k := 0; k < len(l2.Ids); k++ {
-                           nIds[len(l1.Ids)+k] = l2.Ids[len(l2.Ids)-1-k]
-                       }
-                   }
-                   nl := Line{l1.M, nIds}
-                   extendedLines = append(extendedLines, nl)
-               }
-            }
-            // Add the other two triangle points if no joins
-            // Need to duplicate the line
-            if !joined {
-                l1 := board.Lines[lineIds[i]]
-                id1 := board.Triangles[t].Ids[keypoints[i]]
-                nl1 := make([]int, 0)
-                nl2 := make([]int, 0)
-                var app1, app2 int
-                switch keypoints[i] {
-                    case 0: {
-                        app1 = board.Triangles[t].Ids[1]
-                        app2 = board.Triangles[t].Ids[2]
-                    }
-                    case 1: {
-                        app1 = board.Triangles[t].Ids[0]
-                        app2 = board.Triangles[t].Ids[2]
-                    }
-                    case 2: {
-                        app1 = board.Triangles[t].Ids[0]
-                        app2 = board.Triangles[t].Ids[1]
-                    }
-                }
-                if l1.Ids[0] == id1 {
-                    nl1 = append(nl1, app1)
-                    nl2 = append(nl2, app2)
-                    nl1 = append(nl1, l1.Ids...)
-                    nl2 = append(nl2, l1.Ids...)
-                } else {
-                    nl1 = append(nl1, l1.Ids...)
-                    nl2 = append(nl2, l1.Ids...)
-                    nl1 = append(nl1, board.Triangles[t].Ids[1])
-                    nl2 = append(nl2, board.Triangles[t].Ids[2])
-                }
-                extendedLines = append(extendedLines, Line{l1.M, nl1})
-                extendedLines = append(extendedLines, Line{l1.M, nl2})
-            }
-        }
-    }
-    // Add in the non-extended lines
-    for i,line := range board.Lines {
-        if !linesExtended[i] {
-            extendedLines = append(extendedLines, line)
-        }
-    }
-    board.Lines = extendedLines
-    board.CullShortLines()
-}
-
+    
 func (line Line) Includes(p Point) bool {
     for _,pId := range line.Ids {
         if pId == p.Id {
@@ -292,7 +344,7 @@ func Distance(p1 Point, p2 Point) float64 {
     return math.Sqrt(dx*dx + dy*dy)
 }
 
-func PointsToLines(points []Point) []Line {
+func PointsToLines(points []Point, d float64) []Line {
     lines := make([]Line, 0)
     for i := 0; i < len(points); i++ {
         p1 := points[i]
@@ -311,12 +363,18 @@ func PointsToLines(points []Point) []Line {
                 }
                 if !line.Includes(p1) {
                     if ApproxEq(Slope(points[line.Ids[0]], p1), m) {
+                        if d != 0 && !(ApproxEq(Distance(points[line.Ids[0]], p1), d) || ApproxEq(Distance(points[line.Ids[len(line.Ids)-1]], p1), d)) {
+                            continue
+                        }
                         lines[k].Ids = append(lines[k].Ids, p1.Id)
                         found = true
                     }
                 } 
                 if !line.Includes(p2) {
                     if ApproxEq(Slope(points[line.Ids[0]], p2), m) {
+                        if d != 0 && !(ApproxEq(Distance(points[line.Ids[0]], p2), d) || ApproxEq(Distance(points[line.Ids[len(line.Ids)-1]], p2), d)) {
+                            continue
+                        }
                         lines[k].Ids = append(lines[k].Ids, p2.Id)
                         found = true
                     }
@@ -327,8 +385,10 @@ func PointsToLines(points []Point) []Line {
             }
             // New line
             if !found {
-                line := Line{m, []int{p1.Id, p2.Id}}
-                lines = append(lines, line)
+                if d == 0 || ApproxEq(Distance(p1, p2), d) {
+                    line := Line{m, []int{p1.Id, p2.Id}}
+                    lines = append(lines, line)
+                }
             }
         }
     }
@@ -347,25 +407,31 @@ func PointsToLines(points []Point) []Line {
 }
 
 // Cull lines with only two points
-func (board *Board) CullShortLines() {
+func CullShortLines(lines []Line) []Line {
     keep := make([]Line, 0)
-    for _,line := range board.Lines {
+    for _,line := range lines {
         if len(line.Ids) > 2 {
             keep = append(keep, line)
         }
     }
-    board.Lines = keep
+    return keep
 }
 
-func (board *Board) CullLongIntervalLines(cutoff float64) {
+func CullLinesByNeighbors(lines []Line, neighbors [][]int) []Line {
     keep := make([]Line, 0)
-    for _,line := range board.Lines {
-        d := Distance(board.Points[line.Ids[0]], board.Points[line.Ids[1]])
-        if d < cutoff {
+    for _,line := range lines {
+        k := true
+        for i := 0; i < len(line.Ids)-1; i++ {
+            if !Includes(neighbors[line.Ids[i]], line.Ids[i+1]) {
+                k = false
+                break
+            }
+        }
+        if k {
             keep = append(keep, line)
         }
     }
-    board.Lines = keep
+    return keep
 }
 
 func MakeTraditional(n int) *Board {
@@ -377,7 +443,7 @@ func MakeTraditional(n int) *Board {
             points[id] = p
         }
     }
-    lines := PointsToLines(points)
+    lines := PointsToLines(points, 0)
     // Cull lines with d > sqrt(2)+delta
     keep := make([]Line, 0)
     for _,line := range lines {
@@ -386,14 +452,13 @@ func MakeTraditional(n int) *Board {
             keep = append(keep, line)
         }
     }
-    b := &Board{
+    // Cull lines with only two points
+    keep = CullShortLines(keep)
+    return &Board{
         Points: points,
         Lines: keep,
         Turn: 0,
     }
-    // Cull length-2 lines
-    b.CullShortLines()
-    return b
 }
 
 // We ignore neighbors and triangles
