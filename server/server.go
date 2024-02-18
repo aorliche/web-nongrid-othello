@@ -27,7 +27,7 @@ type Game struct {
 // ListBoards: [none]
 // LoadBoard: BoardName
 // ListGames: [none]
-// NewGame: AIGame, BoardName, Points
+// NewGame: AIGame, BoardName, Points, Neighbors
 // JoinGame: Key
 // Move: Key, Move
 // Concede: Key
@@ -38,6 +38,7 @@ type Request struct {
     Action string
     BoardName string
     Points []ai.Point
+    Neighbors [][]int
     Move int
     Text string
     AIGame bool
@@ -213,12 +214,15 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             aiGame := req.AIGame
             name := req.BoardName
             points := req.Points
+            ns := req.Neighbors
+            lines := ai.PointsToLinesGood(points, ns)
+            lines = ai.CullShortLines(lines)
+            lines = ai.CullSubsetLines(lines)
             board := &ai.Board{
                 Points: points,
-                Lines: ai.PointsToLines(points),
+                Lines: lines,
                 Turn: 0,
             }
-            //board.CullLongIntervalLines(100)
             plan, err := GetBoard(name)
             if err != nil {
                 log.Println(err)

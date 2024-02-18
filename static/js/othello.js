@@ -68,6 +68,15 @@ function transformPoints(board) {
     return pts;
 }
 
+// For some reason, board.neighbors is an object
+function transformNeighbors(board) {
+    const ns = [];
+    for (let i=0; i<board.points.length; i++) {
+        ns.push(board.neighbors[i]);
+    }
+    return ns;
+}
+
 function getMove(pts1, pts2) {
     for (let i=0; i<pts1.length; i++) {
         if (pts1[i].Player == -1 && pts2[i].Player != -1) {
@@ -313,7 +322,8 @@ window.addEventListener('load', () => {
 
     $('#new').addEventListener('click', () => {
         const pts = transformPoints(board);
-        const req = {Action: 'NewGame', AIGame: false, BoardName: boardName, Points: pts};
+        const ns = transformNeighbors(board);
+        const req = {Action: 'NewGame', AIGame: false, BoardName: boardName, Points: pts, Neighbors: ns};
         conn.send(JSON.stringify(req));
         $('#new').disabled = true;
         $('#new-ai').disabled = true;
@@ -321,7 +331,8 @@ window.addEventListener('load', () => {
     
     $('#new-ai').addEventListener('click', () => {
         const pts = transformPoints(board);
-        const req = {Action: 'NewGame', AIGame: true, BoardName: boardName, Points: pts};
+        const ns = transformNeighbors(board);
+        const req = {Action: 'NewGame', AIGame: true, BoardName: boardName, Points: pts, Neighbors: ns};
         conn.send(JSON.stringify(req));
         $('#new').disabled = true;
         $('#new-ai').disabled = true;
