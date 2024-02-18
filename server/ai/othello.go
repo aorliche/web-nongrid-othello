@@ -14,32 +14,9 @@ type Point struct {
     Player int
 }
 
-type Triangle struct {
-    Ids [3]int
-}
-
 type Line struct {
     M float64
     Ids []int
-}
-
-const (
-    NodeLine int = iota
-    NodeTriangle 
-)
-
-type BoardError string
-
-func (e BoardError) Error() string {
-    return string(e)
-}
-
-type Node struct {
-    Type int
-    Neighbors []int
-    LineId int
-    TriangleId int
-    TrianglePointId int
 }
 
 type Board struct {
@@ -107,61 +84,141 @@ func Distance(p1 Point, p2 Point) float64 {
 
 func ContinueLines(points []Point, neighbors [][]int, line []int, lines *[]Line) {
     found := false
-    if len(line) < 11 {
-        for i := 0; i < len(points); i++ {
+    if len(line) < 6 {
+        for _,i := range neighbors[line[0]] {
             if Includes(line, i) {
                 continue
             }
             p := points[i]
-            // Continue from start
-            if Includes(neighbors[i], line[0]) {
-                p0 := points[line[0]]
-                p1 := points[line[1]]
-                v1 := Point{p0.X - p1.X, p0.Y - p1.Y,-1,-1}
-                v2 := Point{p.X - p0.X, p.Y - p0.Y,-1,-1}
-                t1 := math.Atan2(v1.Y, v1.X)
-                t2 := math.Atan2(v2.Y, v2.X)    
-                td := t1 - t2
-                if td < math.Pi/4-0.01 && td > -math.Pi/4+0.01 {
-                    next := make([]int, len(line))  
-                    copy(next, line)
-                    Reverse(next)
-                    next = append(next, i)
-                    ContinueLines(points, neighbors, next, lines)
-                    found = true
-                }
-            // Continue from end
-            } else if Includes(neighbors[i], line[len(line)-1]) {
-                p0 := points[line[len(line)-1]]
-                p1 := points[line[len(line)-2]]
-                v1 := Point{p0.X - p1.X, p0.Y - p1.Y,-1,-1}
-                v2 := Point{p.X - p0.X, p.Y - p0.Y,-1,-1}
-                t1 := math.Atan2(v1.Y, v1.X)
-                t2 := math.Atan2(v2.Y, v2.X)
-                td := t1 - t2
-                if td < math.Pi/4-0.01 && td > -math.Pi/4+0.01 {
-                    next := make([]int, len(line))  
-                    copy(next, line)
-                    next = append(next, i)
-                    ContinueLines(points, neighbors, next, lines)
-                    found = true
-                }
+            p0 := points[line[0]]
+            p1 := points[line[1]]
+            v1 := Point{p0.X - p1.X, p0.Y - p1.Y,-1,-1}
+            v2 := Point{p.X - p0.X, p.Y - p0.Y,-1,-1}
+            t1 := math.Atan2(v1.Y, v1.X)
+            t2 := math.Atan2(v2.Y, v2.X)    
+            td := t1 - t2
+            if td < math.Pi/4-0.01 && td > -math.Pi/4+0.01 {
+                next := make([]int, len(line))  
+                copy(next, line)
+                Reverse(next)
+                next = append(next, i)
+                ContinueLines(points, neighbors, next, lines)
+                found = true
+            }
+        }
+        for _,i := range neighbors[line[len(line)-1]] {
+            if Includes(line, i) {
+                continue
+            }
+            p := points[i]
+            p0 := points[line[len(line)-1]]
+            p1 := points[line[len(line)-2]]
+            v1 := Point{p0.X - p1.X, p0.Y - p1.Y,-1,-1}
+            v2 := Point{p.X - p0.X, p.Y - p0.Y,-1,-1}
+            t1 := math.Atan2(v1.Y, v1.X)
+            t2 := math.Atan2(v2.Y, v2.X)
+            td := t1 - t2
+            if td < math.Pi/4-0.01 && td > -math.Pi/4+0.01 {
+                next := make([]int, len(line))  
+                copy(next, line)
+                next = append(next, i)
+                ContinueLines(points, neighbors, next, lines)
+                found = true
             }
         }
     }
     if !found {
         // Check if lines already contains our line
-        for _, ll := range *lines {
-            if Equals(ll.Ids, line) {
+        /*for _, saved := range *lines {
+            if IsSubset(line, saved.Ids) {
                 return
             }
-            Reverse(line)
-            if Equals(ll.Ids, line) {
-                return
-            }
-        }
+        }*/
         *lines = append(*lines, Line{0, line})
     }
+}
+
+func TryCombine(l1 []int, l2 []int) []int {
+    m := len(l1)
+    n := len(l2)
+    z := m 
+    if z > n {
+        z = n
+    }
+    for i := 2; i < z; i++ {
+        // l1 before l2
+        olp := true
+        for j := 0; j < i; j++ {
+            if l1[m-i+j] != l2[j] {
+                olp = false
+                break
+            }
+        }
+        if olp {
+            nl := make([]int, m)
+            copy(nl, l1)
+            nl = append(nl, l2[i:]...)
+            return nl
+        }
+    }
+    return nil
+}
+
+func CombineLines(lines []Line) []Line {
+    newLines := make([]Line, len(lines))
+    copy(newLines, lines)
+    var nl []int
+    for _,small := range lines {
+        for _,big := range lines {
+            if len(big.Ids) < len(small.Ids) {
+                continue
+            }
+            nl = TryCombine(small.Ids, big.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            nl = TryCombine(big.Ids, small.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            Reverse(small.Ids)
+            nl = TryCombine(small.Ids, big.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            nl = TryCombine(big.Ids, small.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            Reverse(big.Ids)
+            nl = TryCombine(small.Ids, big.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            nl = TryCombine(big.Ids, small.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            Reverse(small.Ids)
+            nl = TryCombine(small.Ids, big.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+            nl = TryCombine(big.Ids, small.Ids)
+            if nl != nil {
+                newLines = append(newLines, Line{0, nl})
+                continue
+            }
+        }
+    }
+    return newLines
 }
 
 func PointsToLinesGood(points []Point, neighbors [][]int) []Line {
@@ -247,6 +304,23 @@ func IsSubset(small, big []int) bool {
     return yes
 }
 
+func CullEqualLines(lines []Line) []Line {
+    keep := make([]Line, 0)
+    for i := 0; i < len(lines); i++ {
+        found := false
+        for _,line := range keep {
+            if len(lines[i].Ids) == len(line.Ids) && IsSubset(lines[i].Ids, line.Ids) {
+                found = true
+                break
+            }
+        }
+        if !found {
+            keep = append(keep, lines[i])
+        }
+    }
+    return keep
+}
+
 func CullSubsetLines(lines []Line) []Line {
     keep := make([]Line, 0)
     for i := 0; i < len(lines); i++ {
@@ -254,6 +328,7 @@ func CullSubsetLines(lines []Line) []Line {
         for j := 0; j < len(lines); j++ {
             if len(lines[i].Ids) < len(lines[j].Ids) && IsSubset(lines[i].Ids, lines[j].Ids) {
                 found = true
+                break
             }
         }
         if !found {

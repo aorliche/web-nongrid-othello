@@ -131,9 +131,14 @@ func TestPointsToLinesGood(t *testing.T) {
     }
     lines := PointsToLinesGood(ps, ns)
     lines = CullShortLines(lines)
-    lines = CullSubsetLines(lines)
+    for i := 0; i < 3; i++ {
+        lines = CombineLines(lines)
+        lines = CullEqualLines(lines)
+        lines = CullSubsetLines(lines)
+    }
     if len(lines) != 6 {
         t.Errorf("got %v, expect %v", len(lines), 6)
         fmt.Println(lines)
     }
+    fmt.Println(lines)
 }

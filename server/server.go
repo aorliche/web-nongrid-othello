@@ -217,6 +217,14 @@ func Socket(w http.ResponseWriter, r *http.Request) {
             ns := req.Neighbors
             lines := ai.PointsToLinesGood(points, ns)
             lines = ai.CullShortLines(lines)
+            // This and the parameter in continue lines has the potential 
+            // to hang line generation
+            for i := 0; i < 2; i++ {
+                lines = ai.CullEqualLines(lines)
+                lines = ai.CullSubsetLines(lines)
+                lines = ai.CombineLines(lines)
+            }
+            lines = ai.CullEqualLines(lines)
             lines = ai.CullSubsetLines(lines)
             board := &ai.Board{
                 Points: points,

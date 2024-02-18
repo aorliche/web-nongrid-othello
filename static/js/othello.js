@@ -178,6 +178,7 @@ window.addEventListener('load', () => {
                 displayScores(board);
                 legalMoves = json.LegalMoves;
                 gameOver = json.GameOver;
+                board.repaint();
                 break;
             case 'Move':
                 const player = json.Player;
